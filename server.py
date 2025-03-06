@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 from fpdf import FPDF
 from flask import Flask, request, jsonify, send_file
+from unidecode import unidecode  # Converts special characters to closest ASCII match
 
 app = Flask(__name__)
 
@@ -13,6 +14,11 @@ app = Flask(__name__)
 @app.route("/")
 def home():
     return "Flask App is Running on Render!"
+
+# ✅ Helper function to clean text (removes unsupported characters)
+def clean_text(text):
+    """ Remove unsupported characters and force ASCII encoding """
+    return unidecode(text)
 
 # ✅ Pay stub processing route
 @app.route("/process-paystub", methods=["POST"])
@@ -25,16 +31,17 @@ def process_paystub():
         if not file_url:
             return jsonify({"error": "No file URL provided"}), 400
 
-        # Simulate pay stub parsing & compliance check
-        employee_name = "John Doe"
+        # Simulated pay stub data for testing
+        employee_name = "John Doe 😃"  # Intentional emoji to test encoding fix
         reported_wages = 1500.00
         calculated_wages = 1525.00
         tip_credit_valid = False  
         overtime_valid = True  
         status = "✅ Wages Match!" if reported_wages == calculated_wages else "⚠️ Mismatch Detected!"
 
-        # ✅ Remove emojis and unsupported characters
-        clean_status = re.sub(r'[^\x00-\x7F]+', '', status)
+        # ✅ Ensure text is clean before adding to PDF
+        clean_employee_name = clean_text(employee_name)
+        clean_status = clean_text(status)
 
         # ✅ Set PDF Path
         pdf_path = os.path.join(os.getcwd(), "paystub_report.pdf")
@@ -48,6 +55,8 @@ def process_paystub():
         logo_path = "static/logo.png"
         if os.path.exists(logo_path):
             pdf.image(logo_path, x=10, y=8, w=40)
+        else:
+            print("⚠️ WARNING: Logo file not found, skipping logo.")
 
         # ✅ Title
         pdf.set_xy(60, 10)  
@@ -58,7 +67,7 @@ def process_paystub():
 
         # ✅ Employee Information
         pdf.set_font("Arial", style="B", size=12)
-        pdf.cell(200, 10, f"Employee: {employee_name}", ln=True)
+        pdf.cell(200, 10, f"Employee: {clean_employee_name}", ln=True)
 
         pdf.ln(5)  
 
@@ -89,6 +98,7 @@ def process_paystub():
         pdf.cell(200, 10, f"Status: {clean_status}", ln=True, align="L")
 
         # ✅ Save PDF
+        print(f"📂 Attempting to save PDF to: {pdf_path}")
         pdf.output(pdf_path)
 
         # ✅ Check if PDF was created correctly
@@ -96,7 +106,12 @@ def process_paystub():
             print(f"❌ ERROR: PDF file was NOT created at {pdf_path}")
             return jsonify({"error": "PDF file was not generated"}), 500
 
-        print(f"✅ PDF file successfully created at {pdf_path}")
+        file_size = os.path.getsize(pdf_path)
+        if file_size < 500:  # Less than 500 bytes is suspicious
+            print(f"❌ ERROR: PDF file is too small ({file_size} bytes). It may be corrupted.")
+            return jsonify({"error": "PDF file is invalid"}), 500
+
+        print(f"✅ PDF file successfully created at {pdf_path}, size: {file_size} bytes")
 
         # ✅ Return the PDF file
         return send_file(pdf_path, mimetype="application/pdf", as_attachment=True, cache_timeout=0)
