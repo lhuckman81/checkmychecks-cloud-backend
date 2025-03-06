@@ -27,9 +27,7 @@ def clean_text(text):
 # ✅ Email Sending Function
 def send_email_with_attachment(to_email, pdf_path):
     try:
-        print("📨 Starting email test...")
-        print("🔗 Connecting to SMTP server...")
-
+        print("📨 Starting email process...")
         msg = EmailMessage()
         msg["Subject"] = "Your Pay Stub Compliance Report"
         msg["From"] = EMAIL_SENDER
@@ -39,22 +37,25 @@ def send_email_with_attachment(to_email, pdf_path):
         with open(pdf_path, "rb") as f:
             msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=os.path.basename(pdf_path))
 
+        print("🔗 Connecting to SMTP server...")
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
             print("🔑 Logging in...")
-            server.login(EMAIL_AUTH_USER, EMAIL_PASSWORD)  # Use auth user for login
+            server.login(EMAIL_AUTH_USER, EMAIL_PASSWORD)
+            print("📤 Sending email...")
             server.send_message(msg)
 
         print(f"✅ Email sent successfully to {to_email}")
         return True
     except Exception as e:
-        print(f"❌ Email failed: {e}")
+        print(f"❌ Failed to send email: {e}")
         return False
 
-# ✅ Pay Stub Processing Route
+# ✅ Home route for testing API status
 @app.route("/", methods=["GET"])
 def home():
     return "Flask App is Running on Render!"
 
+# ✅ Pay Stub Processing Route
 @app.route("/process-paystub", methods=["POST"])
 def process_paystub():
     try:
@@ -162,5 +163,8 @@ def process_paystub():
         print(f"❌ ERROR: {e}")
         return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
 
-# ✅ Ensure Flask runs correctly on Render with port 5050
-if __name__ == "
+# ✅ Ensure Flask runs correctly on Render
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))  # Default to port 5000
+    app.run(host="0.0.0.0", port=port, debug=False)
+
