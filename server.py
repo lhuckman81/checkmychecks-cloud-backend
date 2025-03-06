@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from fpdf import FPDF
 from flask import Flask, request, jsonify, send_file
-from unidecode import unidecode  # Converts special characters to closest ASCII match
+from unidecode import unidecode  # Ensure this is installed in requirements.txt
 
 app = Flask(__name__)
 
@@ -18,7 +18,7 @@ def home():
 # ✅ Helper function to clean text (removes unsupported characters)
 def clean_text(text):
     """ Remove unsupported characters and force ASCII encoding """
-    return unidecode(text)
+    return unidecode(text)  # Converts special characters to closest ASCII match
 
 # ✅ Pay stub processing route
 @app.route("/process-paystub", methods=["POST"])
