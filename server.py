@@ -111,7 +111,7 @@ def process_paystub():
         print(f"✅ PDF file successfully created at {pdf_path}, size: {file_size} bytes")
 
         # ✅ Return the PDF file
-        return send_file(pdf_path, mimetype="application/pdf", as_attachment=True, cache_timeout=0)
+        return send_file(pdf_path, mimetype="application/pdf", as_attachment=True)
 
     except Exception as e:
         print(f"❌ ERROR: {e}")
