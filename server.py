@@ -37,7 +37,13 @@ def process_paystub():
     pdf.cell(200, 10, txt=f"Employee: {employee_name}", ln=True)
     pdf.cell(200, 10, txt=f"Reported Wages: ${reported_wages}", ln=True)
     pdf.cell(200, 10, txt=f"Calculated Wages: ${calculated_wages}", ln=True)
-    pdf.cell(200, 10, txt=f"Status: {status}", ln=True)
+   import re
+
+# Remove emojis and unsupported characters
+clean_status = re.sub(r'[^\x00-\x7F]+', '', status)
+
+pdf.cell(200, 10, txt=f"Status: {clean_status}", ln=True)
+
 
     pdf_path = "/tmp/paystub_report.pdf"
     pdf.output(pdf_path)
