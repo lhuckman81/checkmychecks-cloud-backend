@@ -1,11 +1,13 @@
 import os
 import re
+import smtplib
 import pytesseract
 import pdf2image
 import cv2
 import numpy as np
 from fpdf import FPDF
 from flask import Flask, request, jsonify, send_file
+from email.message import EmailMessage
 from unidecode import unidecode  # Ensure this is installed in requirements.txt
 
 app = Flask(__name__)
@@ -15,6 +17,35 @@ def clean_text(text):
     """ Remove unsupported characters and force ASCII encoding """
     return unidecode(str(text))  # Converts special characters to closest ASCII match
 
+# ✅ Email sending function (Placed before process_paystub)
+def send_email_with_attachment(to_email, pdf_path):
+    try:
+        sender_email = os.getenv("EMAIL_SENDER")  # Store in Render environment variables
+        sender_password = os.getenv("EMAIL_PASSWORD")  # Store securely in Render
+
+        # Create email
+        msg = EmailMessage()
+        msg["Subject"] = "Your Pay Stub Compliance Report"
+        msg["From"] = sender_email
+        msg["To"] = to_email
+        msg.set_content("Attached is your compliance report. Please review it.")
+
+        # Attach the PDF
+        with open(pdf_path, "rb") as f:
+            msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=os.path.basename(pdf_path))
+
+        # Connect to email server (Gmail SMTP as example)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+
+        print(f"✅ Email sent successfully to {to_email}")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+        return False
+
+# ✅ Pay stub processing route
 @app.route("/process-paystub", methods=["POST"])
 def process_paystub():
     try:
@@ -26,7 +57,7 @@ def process_paystub():
             return jsonify({"error": "No file URL provided"}), 400
 
         # Simulated pay stub data for testing
-        employee_name = "John Doe 😃"  # Intentional emoji to test encoding fix
+        employee_name = "John Doe"
         reported_wages = 1500.00
         calculated_wages = 1525.00
         tip_credit_valid = False  
@@ -46,7 +77,7 @@ def process_paystub():
         # ✅ Generate PDF report
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", style="", size=12)
+        pdf.set_font("Arial", size=12)
 
         # ✅ Add Logo (if available)
         logo_path = "static/logo.png"
@@ -65,7 +96,6 @@ def process_paystub():
         # ✅ Employee Information
         pdf.set_font("Arial", style="B", size=12)
         pdf.cell(200, 10, f"Employee: {clean_employee_name}", ln=True)
-
         pdf.ln(5)  
 
         # ✅ Table Headers
@@ -110,8 +140,11 @@ def process_paystub():
 
         print(f"✅ PDF file successfully created at {pdf_path}, size: {file_size} bytes")
 
-        # ✅ Return the PDF file
-        return send_file(pdf_path, mimetype="application/pdf", as_attachment=True)
+        # ✅ Send email with PDF attached
+        if send_email_with_attachment(email, pdf_path):
+            return jsonify({"message": "Report generated & emailed successfully!", "email": email})
+        else:
+            return jsonify({"error": "Report generated but email failed"}), 500
 
     except Exception as e:
         print(f"❌ ERROR: {e}")
