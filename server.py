@@ -10,17 +10,11 @@ from unidecode import unidecode  # Ensure this is installed in requirements.txt
 
 app = Flask(__name__)
 
-# ✅ Home route to check if the API is running
-@app.route("/")
-def home():
-    return "Flask App is Running on Render!"
-
 # ✅ Helper function to clean text (removes unsupported characters)
 def clean_text(text):
     """ Remove unsupported characters and force ASCII encoding """
-    return unidecode(text)  # Converts special characters to closest ASCII match
+    return unidecode(str(text))  # Converts special characters to closest ASCII match
 
-# ✅ Pay stub processing route
 @app.route("/process-paystub", methods=["POST"])
 def process_paystub():
     try:
@@ -45,8 +39,6 @@ def process_paystub():
 
         # ✅ Set PDF Path
         from datetime import datetime
-
-        # ✅ Generate a unique filename with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         pdf_filename = f"paystub_report_{timestamp}.pdf"
         pdf_path = os.path.join(os.getcwd(), pdf_filename)
@@ -66,7 +58,7 @@ def process_paystub():
         # ✅ Title
         pdf.set_xy(60, 10)  
         pdf.set_font("Arial", style="B", size=16)
-        pdf.cell(200, 10, "Pay Stub Compliance Report", ln=True, align="L")
+        pdf.cell(200, 10, clean_text("Pay Stub Compliance Report"), ln=True, align="L")
 
         pdf.ln(10)  
 
@@ -78,24 +70,24 @@ def process_paystub():
 
         # ✅ Table Headers
         pdf.set_font("Arial", style="B", size=10)
-        pdf.cell(90, 10, "Expected Value", border=1, align="C")
-        pdf.cell(90, 10, "Reported Value", border=1, align="C")
+        pdf.cell(90, 10, clean_text("Expected Value"), border=1, align="C")
+        pdf.cell(90, 10, clean_text("Reported Value"), border=1, align="C")
         pdf.ln()
 
         # ✅ Table Data (Wages)
         pdf.set_font("Arial", size=10)
-        pdf.cell(90, 10, f"Calculated Wages: ${calculated_wages}", border=1, align="C")
-        pdf.cell(90, 10, f"Reported Wages: ${reported_wages}", border=1, align="C")
+        pdf.cell(90, 10, clean_text(f"Calculated Wages: ${calculated_wages}"), border=1, align="C")
+        pdf.cell(90, 10, clean_text(f"Reported Wages: ${reported_wages}"), border=1, align="C")
         pdf.ln()
 
         # ✅ Compliance Check - Tip Credit
-        pdf.cell(90, 10, "Tip Credit Compliance", border=1, align="C")
-        pdf.cell(90, 10, "✅ Valid" if tip_credit_valid else "⚠️ Issue Detected", border=1, align="C")
+        pdf.cell(90, 10, clean_text("Tip Credit Compliance"), border=1, align="C")
+        pdf.cell(90, 10, clean_text("✅ Valid" if tip_credit_valid else "⚠️ Issue Detected"), border=1, align="C")
         pdf.ln()
 
         # ✅ Compliance Check - Overtime
-        pdf.cell(90, 10, "Overtime Compliance", border=1, align="C")
-        pdf.cell(90, 10, "✅ Valid" if overtime_valid else "⚠️ Issue Detected", border=1, align="C")
+        pdf.cell(90, 10, clean_text("Overtime Compliance"), border=1, align="C")
+        pdf.cell(90, 10, clean_text("✅ Valid" if overtime_valid else "⚠️ Issue Detected"), border=1, align="C")
         pdf.ln()
 
         # ✅ Summary Status
@@ -104,7 +96,7 @@ def process_paystub():
 
         # ✅ Save PDF
         print(f"📂 Attempting to save PDF to: {pdf_path}")
-        pdf.output(pdf_path)
+        pdf.output(pdf_path, "F")
 
         # ✅ Check if PDF was created correctly
         if not os.path.exists(pdf_path):
