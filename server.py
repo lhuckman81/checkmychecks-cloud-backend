@@ -12,31 +12,31 @@ from unidecode import unidecode  # Ensure this is installed in requirements.txt
 
 app = Flask(__name__)
 
+# ✅ Load Email Credentials from Render Environment Variables
+EMAIL_SENDER = os.getenv("EMAIL_SENDER", "info@mytips.pro")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+SMTP_SERVER = os.getenv("EMAIL_SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("EMAIL_SMTP_PORT", 465))
+
 # ✅ Helper function to clean text (removes unsupported characters)
 def clean_text(text):
     """ Remove unsupported characters and force ASCII encoding """
     return unidecode(str(text))  # Converts special characters to closest ASCII match
 
-# ✅ Email sending function (Placed before process_paystub)
+# ✅ Email Sending Function
 def send_email_with_attachment(to_email, pdf_path):
     try:
-        sender_email = os.getenv("EMAIL_SENDER")  # Store in Render environment variables
-        sender_password = os.getenv("EMAIL_PASSWORD")  # Store securely in Render
-
-        # Create email
         msg = EmailMessage()
         msg["Subject"] = "Your Pay Stub Compliance Report"
-        msg["From"] = sender_email
+        msg["From"] = EMAIL_SENDER
         msg["To"] = to_email
         msg.set_content("Attached is your compliance report. Please review it.")
 
-        # Attach the PDF
         with open(pdf_path, "rb") as f:
             msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=os.path.basename(pdf_path))
 
-        # Connect to email server (Gmail SMTP as example)
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender_email, sender_password)
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
             server.send_message(msg)
 
         print(f"✅ Email sent successfully to {to_email}")
@@ -45,7 +45,7 @@ def send_email_with_attachment(to_email, pdf_path):
         print(f"❌ Failed to send email: {e}")
         return False
 
-# ✅ Pay stub processing route
+# ✅ Pay Stub Processing Route
 @app.route("/process-paystub", methods=["POST"])
 def process_paystub():
     try:
@@ -53,11 +53,11 @@ def process_paystub():
         file_url = data.get("file_url")
         email = data.get("email")
 
-        if not file_url:
-            return jsonify({"error": "No file URL provided"}), 400
+        if not file_url or not email:
+            return jsonify({"error": "Missing required fields"}), 400
 
         # Simulated pay stub data for testing
-        employee_name = "John Doe"
+        employee_name = "John Doe 😃"  # Intentional emoji to test encoding fix
         reported_wages = 1500.00
         calculated_wages = 1525.00
         tip_credit_valid = False  
@@ -74,13 +74,13 @@ def process_paystub():
         pdf_filename = f"paystub_report_{timestamp}.pdf"
         pdf_path = os.path.join(os.getcwd(), pdf_filename)
 
-        # ✅ Generate PDF report
+        # ✅ Generate PDF Report
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", size=12)
+        pdf.set_font("Arial", style="", size=12)
 
         # ✅ Add Logo (if available)
-        logo_path = "static/logo.png"
+        logo_path = "static/checkmychecks_logo.png"
         if os.path.exists(logo_path):
             pdf.image(logo_path, x=10, y=8, w=40)
         else:
@@ -96,6 +96,7 @@ def process_paystub():
         # ✅ Employee Information
         pdf.set_font("Arial", style="B", size=12)
         pdf.cell(200, 10, f"Employee: {clean_employee_name}", ln=True)
+
         pdf.ln(5)  
 
         # ✅ Table Headers
@@ -140,11 +141,13 @@ def process_paystub():
 
         print(f"✅ PDF file successfully created at {pdf_path}, size: {file_size} bytes")
 
-        # ✅ Send email with PDF attached
-        if send_email_with_attachment(email, pdf_path):
-            return jsonify({"message": "Report generated & emailed successfully!", "email": email})
-        else:
+        # ✅ Send Email with Attachment
+        email_success = send_email_with_attachment(email, pdf_path)
+        if not email_success:
             return jsonify({"error": "Report generated but email failed"}), 500
+
+        # ✅ Return the PDF file
+        return send_file(pdf_path, mimetype="application/pdf", as_attachment=True)
 
     except Exception as e:
         print(f"❌ ERROR: {e}")
