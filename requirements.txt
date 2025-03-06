@@ -1,14 +1,7 @@
 flask
-gunicorn
-pytesseract
-pdf2image
-opencv-python-headless
-numpy
 fpdf
-flask
 gunicorn
-pytesseract
-pdf2image
-opencv-python-headless
 numpy
-fpdf
+opencv-python-headless
+pdf2image
+pytesseract
