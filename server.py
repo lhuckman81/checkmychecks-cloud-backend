@@ -38,9 +38,14 @@ def process_paystub():
     pdf.cell(200, 10, txt=f"Reported Wages: ${reported_wages}", ln=True)
     pdf.cell(200, 10, txt=f"Calculated Wages: ${calculated_wages}", ln=True)
     pdf.cell(200, 10, txt=f"Status: {status}", ln=True)
-    
+
     pdf_path = "/tmp/paystub_report.pdf"
     pdf.output(pdf_path)
 
-    # ✅ Send report as API response
-return send_file(pdf_path, mimetype="application/pdf", as_attachment=True)
+    # ✅ Return the PDF file (Make sure this is inside the function!)
+    return send_file(pdf_path, mimetype="application/pdf", as_attachment=True)
+
+# ✅ Ensure Flask runs correctly on Render
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
