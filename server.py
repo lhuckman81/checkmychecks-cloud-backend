@@ -101,7 +101,10 @@ def process_paystub():
         print(f"✅ PDF file exists at {pdf_path}, sending file...")
 
         # ✅ Return the PDF file
-        return if not os.path.exists(pdf_path):
+       if not os.path.exists(pdf_path):
+    print(f"❌ ERROR: PDF file was NOT created at {pdf_path}")
+    return jsonify({"error": "PDF file was not generated"}), 500
+
     print(f"❌ ERROR: PDF file was NOT created at {pdf_path}")
     return jsonify({"error": "PDF file was not generated"}), 500
 
