@@ -1,0 +1,4 @@
+curl -X POST https://checkmychecks-backend.onrender.com/process-paystub \
+     -H "Content-Type: application/json" \
+     -d '{"file_url": "https://example.com/test.pdf", "email": "lhuckman@gmail.com"}'
+
