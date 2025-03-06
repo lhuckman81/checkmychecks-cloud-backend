@@ -101,7 +101,18 @@ def process_paystub():
         print(f"✅ PDF file exists at {pdf_path}, sending file...")
 
         # ✅ Return the PDF file
-        return send_file(pdf_path, mimetype="application/pdf", as_attachment=True, cache_timeout=0)
+        return if not os.path.exists(pdf_path):
+    print(f"❌ ERROR: PDF file was NOT created at {pdf_path}")
+    return jsonify({"error": "PDF file was not generated"}), 500
+
+# ✅ Check file size to ensure it's not empty
+file_size = os.path.getsize(pdf_path)
+if file_size < 500:  # Arbitrary threshold for a valid PDF
+    print(f"❌ ERROR: PDF file is too small ({file_size} bytes). It may be corrupted.")
+    return jsonify({"error": "PDF file is invalid"}), 500
+
+print(f"✅ PDF file successfully created at {pdf_path} with size {file_size} bytes")
+send_file(pdf_path, mimetype="application/pdf", as_attachment=True, cache_timeout=0)
 
     except Exception as e:
         print(f"❌ ERROR: {e}")
