@@ -44,7 +44,12 @@ def process_paystub():
         clean_status = clean_text(status)
 
         # ✅ Set PDF Path
-        pdf_path = os.path.join(os.getcwd(), "paystub_report.pdf")
+        from datetime import datetime
+
+        # ✅ Generate a unique filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pdf_filename = f"paystub_report_{timestamp}.pdf"
+        pdf_path = os.path.join(os.getcwd(), pdf_filename)
 
         # ✅ Generate PDF report
         pdf = FPDF()
