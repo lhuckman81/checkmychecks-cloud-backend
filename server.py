@@ -13,7 +13,8 @@ from unidecode import unidecode  # Ensure this is installed in requirements.txt
 app = Flask(__name__)
 
 # ✅ Load Email Credentials from Render Environment Variables
-EMAIL_SENDER = os.getenv("EMAIL_SENDER", "info@mytips.pro")
+EMAIL_SENDER = os.getenv("EMAIL_SENDER", "info@mytips.pro")  # This is the 'From' address
+EMAIL_AUTH_USER = os.getenv("EMAIL_AUTH_USER", "leif@mytips.pro")  # The actual login
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 SMTP_SERVER = os.getenv("EMAIL_SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("EMAIL_SMTP_PORT", 465))
@@ -28,7 +29,7 @@ def send_email_with_attachment(to_email, pdf_path):
     try:
         msg = EmailMessage()
         msg["Subject"] = "Your Pay Stub Compliance Report"
-        msg["From"] = EMAIL_SENDER
+        msg["From"] = EMAIL_SENDER  # This will appear as "info@mytips.pro"
         msg["To"] = to_email
         msg.set_content("Attached is your compliance report. Please review it.")
 
@@ -36,7 +37,7 @@ def send_email_with_attachment(to_email, pdf_path):
             msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=os.path.basename(pdf_path))
 
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.login(EMAIL_AUTH_USER, EMAIL_PASSWORD)  # Authenticate with leif@mytips.pro
             server.send_message(msg)
 
         print(f"✅ Email sent successfully to {to_email}")
@@ -45,12 +46,12 @@ def send_email_with_attachment(to_email, pdf_path):
         print(f"❌ Failed to send email: {e}")
         return False
 
-# ✅ Home Route (For Testing)
+# ✅ Home Route
 @app.route("/", methods=["GET"])
 def home():
     return "Flask App is Running on Render!"
 
-# ✅ Pay Stub Processing Route (Fixed)
+# ✅ Pay Stub Processing Route
 @app.route("/process-paystub", methods=["POST"])
 def process_paystub():
     try:
