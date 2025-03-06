@@ -1,11 +1,11 @@
 import os
+import re
 import pytesseract
 import pdf2image
 import cv2
 import numpy as np
 from fpdf import FPDF
 from flask import Flask, request, jsonify, send_file
-import re  # ✅ Move this to the top with other imports
 
 app = Flask(__name__)
 
@@ -29,29 +29,79 @@ def process_paystub():
         employee_name = "John Doe"
         reported_wages = 1500.00
         calculated_wages = 1525.00
+        tip_credit_valid = False  
+        overtime_valid = True  
         status = "✅ Wages Match!" if reported_wages == calculated_wages else "⚠️ Mismatch Detected!"
 
         # ✅ Remove emojis and unsupported characters
         clean_status = re.sub(r'[^\x00-\x7F]+', '', status)
 
+        # ✅ Set PDF Path
+        pdf_path = os.path.join(os.getcwd(), "paystub_report.pdf")
+
         # ✅ Generate PDF report
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        pdf.cell(200, 10, txt="Pay Stub Compliance Report", ln=True, align="C")
-        pdf.cell(200, 10, txt=f"Employee: {employee_name}", ln=True)
-        pdf.cell(200, 10, txt=f"Reported Wages: ${reported_wages}", ln=True)
-        pdf.cell(200, 10, txt=f"Calculated Wages: ${calculated_wages}", ln=True)
-        pdf.cell(200, 10, txt=f"Status: {clean_status}", ln=True)
+        pdf.set_font("Arial", style="", size=12)
 
-        pdf_path = "/tmp/paystub_report.pdf"
+        # ✅ Add Logo
+        logo_path = "static/logo.png"  # Ensure this file exists!
+        if os.path.exists(logo_path):
+            pdf.image(logo_path, x=10, y=8, w=40)
+        else:
+            print("⚠️ WARNING: Logo file not found, skipping logo.")
+
+        # ✅ Title
+        pdf.set_xy(60, 10)  
+        pdf.set_font("Arial", style="B", size=16)
+        pdf.cell(200, 10, "Pay Stub Compliance Report", ln=True, align="L")
+
+        pdf.ln(10)  
+
+        # ✅ Employee Information
+        pdf.set_font("Arial", style="B", size=12)
+        pdf.cell(200, 10, f"Employee: {employee_name}", ln=True)
+
+        pdf.ln(5)  
+
+        # ✅ Table Headers
+        pdf.set_font("Arial", style="B", size=10)
+        pdf.cell(90, 10, "Expected Value", border=1, align="C")
+        pdf.cell(90, 10, "Reported Value", border=1, align="C")
+        pdf.ln()
+
+        # ✅ Table Data (Wages)
+        pdf.set_font("Arial", size=10)
+        pdf.cell(90, 10, f"Calculated Wages: ${calculated_wages}", border=1, align="C")
+        pdf.cell(90, 10, f"Reported Wages: ${reported_wages}", border=1, align="C")
+        pdf.ln()
+
+        # ✅ Compliance Check - Tip Credit
+        pdf.cell(90, 10, "Tip Credit Compliance", border=1, align="C")
+        pdf.cell(90, 10, "✅ Valid" if tip_credit_valid else "⚠️ Issue Detected", border=1, align="C")
+        pdf.ln()
+
+        # ✅ Compliance Check - Overtime
+        pdf.cell(90, 10, "Overtime Compliance", border=1, align="C")
+        pdf.cell(90, 10, "✅ Valid" if overtime_valid else "⚠️ Issue Detected", border=1, align="C")
+        pdf.ln()
+
+        # ✅ Summary Status
+        pdf.set_font("Arial", style="B", size=12)
+        pdf.cell(200, 10, f"Status: {clean_status}", ln=True, align="L")
+
+        # ✅ Save PDF
         pdf.output(pdf_path)
 
         # ✅ Debugging Log
-        print(f"✅ Report generated for {email}")
+        if not os.path.exists(pdf_path):
+            print(f"❌ ERROR: PDF file was not created at {pdf_path}")
+            return jsonify({"error": "PDF file was not generated"}), 500
+
+        print(f"✅ PDF file exists at {pdf_path}, sending file...")
 
         # ✅ Return the PDF file
-        return send_file(pdf_path, mimetype="application/pdf", as_attachment=True)
+        return send_file(pdf_path, mimetype="application/pdf", as_attachment=True, cache_timeout=0)
 
     except Exception as e:
         print(f"❌ ERROR: {e}")
