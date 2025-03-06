@@ -5,3 +5,4 @@ numpy
 opencv-python-headless
 pdf2image
 pytesseract
+unidecodeunidecode
