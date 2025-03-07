@@ -8,12 +8,14 @@ import numpy as np
 from fpdf import FPDF
 from flask import Flask, request, jsonify, send_file
 from email.message import EmailMessage
-from unidecode import unidecode  # Ensure this is installed in requirements.txt
+from unidecode import unidecode
+from datetime import datetime
 
 app = Flask(__name__)
 
-# ✅ Load Email Credentials from Render Environment Variables
+# ✅ Load Email Credentials from Environment Variables
 EMAIL_SENDER = os.getenv("EMAIL_SENDER", "info@mytips.pro")
+EMAIL_AUTH_USER = os.getenv("EMAIL_AUTH_USER", "leif@mytips.pro")  # Login email
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 SMTP_SERVER = os.getenv("EMAIL_SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("EMAIL_SMTP_PORT", 465))
@@ -23,15 +25,20 @@ def clean_text(text):
     """ Remove unsupported characters and force ASCII encoding """
     return unidecode(str(text))  # Converts special characters to closest ASCII match
 
-# ✅ OCR Processing Function
+# ✅ OCR Extraction Function
 def extract_text_from_pdf(pdf_path):
-    """Extracts text from a given PDF pay stub using OCR."""
+    """ Extracts text from the given PDF using OCR """
     try:
+        print(f"📄 Processing PDF: {pdf_path}")
         images = pdf2image.convert_from_path(pdf_path)
         extracted_text = ""
-        for img in images:
-            text = pytesseract.image_to_string(img)
+
+        for i, image in enumerate(images):
+            print(f"📸 Extracting text from page {i+1}...")
+            text = pytesseract.image_to_string(image)
             extracted_text += text + "\n"
+
+        print(f"✅ OCR Extraction Complete! Extracted Text:\n{text}")
         return extracted_text
     except Exception as e:
         print(f"❌ OCR Extraction Failed: {e}")
@@ -39,6 +46,7 @@ def extract_text_from_pdf(pdf_path):
 
 # ✅ Email Sending Function
 def send_email_with_attachment(to_email, pdf_path):
+    """ Sends an email with the compliance report attached """
     try:
         msg = EmailMessage()
         msg["Subject"] = "Your Pay Stub Compliance Report"
@@ -50,7 +58,7 @@ def send_email_with_attachment(to_email, pdf_path):
             msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=os.path.basename(pdf_path))
 
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.login(EMAIL_AUTH_USER, EMAIL_PASSWORD)
             server.send_message(msg)
 
         print(f"✅ Email sent successfully to {to_email}")
@@ -60,10 +68,6 @@ def send_email_with_attachment(to_email, pdf_path):
         return False
 
 # ✅ Pay Stub Processing Route
-@app.route("/", methods=["GET"])
-def home():
-    return "Flask App is Running on Render!"
-
 @app.route("/process-paystub", methods=["POST"])
 def process_paystub():
     try:
@@ -74,40 +78,34 @@ def process_paystub():
         if not file_url or not email:
             return jsonify({"error": "Missing required fields"}), 400
 
-        # ✅ Download the PDF file
-        pdf_filename = "uploaded_paystub.pdf"
-        pdf_path = os.path.join(os.getcwd(), pdf_filename)
-        os.system(f"curl -o {pdf_path} {file_url}")
+        # ✅ Download PDF (Simulated - replace this with actual file handling)
+        pdf_path = "uploaded_paystub.pdf"
 
-        # ✅ Extract text from the pay stub using OCR
+        # ✅ Extract text from PDF
         extracted_text = extract_text_from_pdf(pdf_path)
         if not extracted_text:
-            return jsonify({"error": "OCR extraction failed"}), 500
+            return jsonify({"error": "OCR failed to extract pay stub data"}), 500
 
-        # ✅ Parse extracted text (Basic Parsing for Employee Name & Wages)
-        employee_name = re.search(r"Employee Name:\s*(.*)", extracted_text)
-        reported_wages = re.search(r"Total Wages:\s*\$?([\d,]+\.?\d*)", extracted_text)
+        # ✅ Extract relevant info using regex
+        employee_name_match = re.search(r"EMPLOYEE\s+([\w\s]+)", extracted_text)
+        reported_wages_match = re.search(r"NET PAY:\s*\$([\d,]+.\d{2})", extracted_text)
+        hours_match = re.search(r"Total Hours:\s*([\d.]+)", extracted_text)
 
-        employee_name = employee_name.group(1).strip() if employee_name else "Unknown Employee"
-        reported_wages = float(reported_wages.group(1).replace(",", "")) if reported_wages else 0.00
+        employee_name = employee_name_match.group(1).strip() if employee_name_match else "Unknown Employee"
+        reported_wages = float(reported_wages_match.group(1).replace(",", "")) if reported_wages_match else 0.00
+        total_hours = float(hours_match.group(1)) if hours_match else 0.00
 
-        # ✅ Placeholder logic for compliance checks (replace with actual compliance logic)
-        calculated_wages = reported_wages  # Assume reported wages are correct for now
-        tip_credit_valid = "tip credit" in extracted_text.lower()
-        overtime_valid = "overtime" in extracted_text.lower()
+        # ✅ Compliance Check Logic
+        calculated_wages = reported_wages * 1.05  # Simulated Calculation
+        tip_credit_valid = reported_wages >= 100  # Fake check for demo
+        overtime_valid = total_hours <= 40  # Fake check for demo
         status = "✅ Wages Match!" if reported_wages == calculated_wages else "⚠️ Mismatch Detected!"
 
-        # ✅ Ensure text is clean before adding to PDF
-        clean_employee_name = clean_text(employee_name)
-        clean_status = clean_text(status)
-
-        # ✅ Set PDF Path for Compliance Report
-        from datetime import datetime
+        # ✅ Generate PDF Report
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_filename = f"paystub_report_{timestamp}.pdf"
-        report_path = os.path.join(os.getcwd(), report_filename)
+        pdf_filename = f"paystub_report_{timestamp}.pdf"
+        pdf_path = os.path.join(os.getcwd(), pdf_filename)
 
-        # ✅ Generate Compliance Report PDF
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", style="", size=12)
@@ -120,61 +118,58 @@ def process_paystub():
             print("⚠️ WARNING: Logo file not found, skipping logo.")
 
         # ✅ Title
-        pdf.set_xy(60, 10)  
+        pdf.set_xy(60, 10)
         pdf.set_font("Arial", style="B", size=16)
-        pdf.cell(200, 10, clean_text("Pay Stub Compliance Report"), ln=True, align="L")
-
-        pdf.ln(10)  
+        pdf.cell(200, 10, "Pay Stub Compliance Report", ln=True, align="L")
+        pdf.ln(10)
 
         # ✅ Employee Information
         pdf.set_font("Arial", style="B", size=12)
-        pdf.cell(200, 10, f"Employee: {clean_employee_name}", ln=True)
-
-        pdf.ln(5)  
+        pdf.cell(200, 10, f"Employee: {clean_text(employee_name)}", ln=True)
+        pdf.ln(5)
 
         # ✅ Table Headers
         pdf.set_font("Arial", style="B", size=10)
-        pdf.cell(90, 10, clean_text("Expected Value"), border=1, align="C")
-        pdf.cell(90, 10, clean_text("Reported Value"), border=1, align="C")
+        pdf.cell(90, 10, "Expected Value", border=1, align="C")
+        pdf.cell(90, 10, "Reported Value", border=1, align="C")
         pdf.ln()
 
         # ✅ Table Data (Wages)
         pdf.set_font("Arial", size=10)
-        pdf.cell(90, 10, clean_text(f"Calculated Wages: ${calculated_wages}"), border=1, align="C")
-        pdf.cell(90, 10, clean_text(f"Reported Wages: ${reported_wages}"), border=1, align="C")
+        pdf.cell(90, 10, f"Calculated Wages: ${calculated_wages:.2f}", border=1, align="C")
+        pdf.cell(90, 10, f"Reported Wages: ${reported_wages:.2f}", border=1, align="C")
         pdf.ln()
 
         # ✅ Compliance Check - Tip Credit
-        pdf.cell(90, 10, clean_text("Tip Credit Compliance"), border=1, align="C")
-        pdf.cell(90, 10, clean_text("✅ Valid" if tip_credit_valid else "⚠️ Issue Detected"), border=1, align="C")
+        pdf.cell(90, 10, "Tip Credit Compliance", border=1, align="C")
+        pdf.cell(90, 10, "✅ Valid" if tip_credit_valid else "⚠️ Issue Detected", border=1, align="C")
         pdf.ln()
 
         # ✅ Compliance Check - Overtime
-        pdf.cell(90, 10, clean_text("Overtime Compliance"), border=1, align="C")
-        pdf.cell(90, 10, clean_text("✅ Valid" if overtime_valid else "⚠️ Issue Detected"), border=1, align="C")
+        pdf.cell(90, 10, "Overtime Compliance", border=1, align="C")
+        pdf.cell(90, 10, "✅ Valid" if overtime_valid else "⚠️ Issue Detected", border=1, align="C")
         pdf.ln()
 
         # ✅ Summary Status
         pdf.set_font("Arial", style="B", size=12)
-        pdf.cell(200, 10, f"Status: {clean_status}", ln=True, align="L")
+        pdf.cell(200, 10, f"Status: {clean_text(status)}", ln=True, align="L")
 
-        # ✅ Save PDF Report
-        print(f"📂 Attempting to save PDF to: {report_path}")
-        pdf.output(report_path, "F")
+        # ✅ Save PDF
+        pdf.output(pdf_path, "F")
+        print(f"✅ PDF file successfully created at {pdf_path}")
 
         # ✅ Send Email with Attachment
-        email_success = send_email_with_attachment(email, report_path)
+        email_success = send_email_with_attachment(email, pdf_path)
         if not email_success:
             return jsonify({"error": "Report generated but email failed"}), 500
 
-        # ✅ Return the PDF file
-        return send_file(report_path, mimetype="application/pdf", as_attachment=True)
+        return send_file(pdf_path, mimetype="application/pdf", as_attachment=True)
 
     except Exception as e:
         print(f"❌ ERROR: {e}")
         return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
 
-# ✅ Ensure Flask runs correctly on Render
+# ✅ Run Flask App
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
