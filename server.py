@@ -10,8 +10,13 @@ from flask import Flask, request, jsonify, send_file
 from email.message import EmailMessage
 from unidecode import unidecode
 from datetime import datetime
+import requests
 
 app = Flask(__name__)
+
+# ✅ Ensure uploads directory exists
+UPLOADS_DIR = "uploads"
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 # ✅ Load Email Credentials from Environment Variables
 EMAIL_SENDER = os.getenv("EMAIL_SENDER", "info@mytips.pro")
@@ -23,7 +28,24 @@ SMTP_PORT = int(os.getenv("EMAIL_SMTP_PORT", 465))
 # ✅ Helper function to clean text (removes unsupported characters)
 def clean_text(text):
     """ Remove unsupported characters and force ASCII encoding """
-    return unidecode(str(text))  # Converts special characters to closest ASCII match
+    return unidecode(str(text))
+
+# ✅ Function to download the uploaded file
+def download_pdf(file_url, save_path):
+    """ Downloads the pay stub from a given URL """
+    try:
+        response = requests.get(file_url)
+        if response.status_code == 200:
+            with open(save_path, "wb") as f:
+                f.write(response.content)
+            print(f"✅ File downloaded successfully: {save_path}")
+            return True
+        else:
+            print(f"❌ Failed to download file: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"❌ Error downloading file: {e}")
+        return False
 
 # ✅ OCR Extraction Function
 def extract_text_from_pdf(pdf_path):
@@ -78,8 +100,13 @@ def process_paystub():
         if not file_url or not email:
             return jsonify({"error": "Missing required fields"}), 400
 
-        # ✅ Download PDF (Simulated - replace this with actual file handling)
-        pdf_path = "uploaded_paystub.pdf"
+        # ✅ Define file path
+        pdf_filename = f"uploaded_paystub_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        pdf_path = os.path.join(UPLOADS_DIR, pdf_filename)
+
+        # ✅ Download the uploaded pay stub
+        if not download_pdf(file_url, pdf_path):
+            return jsonify({"error": "Failed to download pay stub"}), 500
 
         # ✅ Extract text from PDF
         extracted_text = extract_text_from_pdf(pdf_path)
@@ -102,9 +129,8 @@ def process_paystub():
         status = "✅ Wages Match!" if reported_wages == calculated_wages else "⚠️ Mismatch Detected!"
 
         # ✅ Generate PDF Report
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        pdf_filename = f"paystub_report_{timestamp}.pdf"
-        pdf_path = os.path.join(os.getcwd(), pdf_filename)
+        report_filename = f"paystub_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        report_path = os.path.join(os.getcwd(), report_filename)
 
         pdf = FPDF()
         pdf.add_page()
@@ -128,42 +154,20 @@ def process_paystub():
         pdf.cell(200, 10, f"Employee: {clean_text(employee_name)}", ln=True)
         pdf.ln(5)
 
-        # ✅ Table Headers
-        pdf.set_font("Arial", style="B", size=10)
-        pdf.cell(90, 10, "Expected Value", border=1, align="C")
-        pdf.cell(90, 10, "Reported Value", border=1, align="C")
-        pdf.ln()
-
-        # ✅ Table Data (Wages)
-        pdf.set_font("Arial", size=10)
-        pdf.cell(90, 10, f"Calculated Wages: ${calculated_wages:.2f}", border=1, align="C")
-        pdf.cell(90, 10, f"Reported Wages: ${reported_wages:.2f}", border=1, align="C")
-        pdf.ln()
-
-        # ✅ Compliance Check - Tip Credit
-        pdf.cell(90, 10, "Tip Credit Compliance", border=1, align="C")
-        pdf.cell(90, 10, "✅ Valid" if tip_credit_valid else "⚠️ Issue Detected", border=1, align="C")
-        pdf.ln()
-
-        # ✅ Compliance Check - Overtime
-        pdf.cell(90, 10, "Overtime Compliance", border=1, align="C")
-        pdf.cell(90, 10, "✅ Valid" if overtime_valid else "⚠️ Issue Detected", border=1, align="C")
-        pdf.ln()
-
         # ✅ Summary Status
         pdf.set_font("Arial", style="B", size=12)
         pdf.cell(200, 10, f"Status: {clean_text(status)}", ln=True, align="L")
 
         # ✅ Save PDF
-        pdf.output(pdf_path, "F")
-        print(f"✅ PDF file successfully created at {pdf_path}")
+        pdf.output(report_path, "F")
+        print(f"✅ PDF file successfully created at {report_path}")
 
         # ✅ Send Email with Attachment
-        email_success = send_email_with_attachment(email, pdf_path)
+        email_success = send_email_with_attachment(email, report_path)
         if not email_success:
             return jsonify({"error": "Report generated but email failed"}), 500
 
-        return send_file(pdf_path, mimetype="application/pdf", as_attachment=True)
+        return send_file(report_path, mimetype="application/pdf", as_attachment=True)
 
     except Exception as e:
         print(f"❌ ERROR: {e}")

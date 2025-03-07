@@ -25,4 +25,16 @@ def send_test_email():
         # ✅ Connect to SMTP Server
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
             print("🔑 Logging in...")
-            server.login(EMAIL_AUTH_
+            server.login(EMAIL_AUTH_USER, EMAIL_PASSWORD)
+
+            print("📩 Sending email...")
+            server.send_message(msg)
+
+        print("✅ Email sent successfully!")
+
+    except Exception as e:
+        print(f"❌ Email failed: {e}")
+
+# ✅ Run the test email function
+send_test_email()
+
