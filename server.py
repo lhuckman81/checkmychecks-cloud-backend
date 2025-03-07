@@ -14,7 +14,6 @@ app = Flask(__name__)
 
 # ✅ Load Email Credentials from Render Environment Variables
 EMAIL_SENDER = os.getenv("EMAIL_SENDER", "info@mytips.pro")
-EMAIL_AUTH_USER = os.getenv("EMAIL_AUTH_USER", "leif@mytips.pro")  # Auth user for login
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 SMTP_SERVER = os.getenv("EMAIL_SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("EMAIL_SMTP_PORT", 465))
@@ -24,10 +23,23 @@ def clean_text(text):
     """ Remove unsupported characters and force ASCII encoding """
     return unidecode(str(text))  # Converts special characters to closest ASCII match
 
+# ✅ OCR Processing Function
+def extract_text_from_pdf(pdf_path):
+    """Extracts text from a given PDF pay stub using OCR."""
+    try:
+        images = pdf2image.convert_from_path(pdf_path)
+        extracted_text = ""
+        for img in images:
+            text = pytesseract.image_to_string(img)
+            extracted_text += text + "\n"
+        return extracted_text
+    except Exception as e:
+        print(f"❌ OCR Extraction Failed: {e}")
+        return None
+
 # ✅ Email Sending Function
 def send_email_with_attachment(to_email, pdf_path):
     try:
-        print("📨 Starting email process...")
         msg = EmailMessage()
         msg["Subject"] = "Your Pay Stub Compliance Report"
         msg["From"] = EMAIL_SENDER
@@ -37,11 +49,8 @@ def send_email_with_attachment(to_email, pdf_path):
         with open(pdf_path, "rb") as f:
             msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=os.path.basename(pdf_path))
 
-        print("🔗 Connecting to SMTP server...")
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-            print("🔑 Logging in...")
-            server.login(EMAIL_AUTH_USER, EMAIL_PASSWORD)
-            print("📤 Sending email...")
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
             server.send_message(msg)
 
         print(f"✅ Email sent successfully to {to_email}")
@@ -50,12 +59,11 @@ def send_email_with_attachment(to_email, pdf_path):
         print(f"❌ Failed to send email: {e}")
         return False
 
-# ✅ Home route for testing API status
+# ✅ Pay Stub Processing Route
 @app.route("/", methods=["GET"])
 def home():
     return "Flask App is Running on Render!"
 
-# ✅ Pay Stub Processing Route
 @app.route("/process-paystub", methods=["POST"])
 def process_paystub():
     try:
@@ -66,25 +74,40 @@ def process_paystub():
         if not file_url or not email:
             return jsonify({"error": "Missing required fields"}), 400
 
-        # Simulated pay stub data for testing
-        employee_name = "John Doe 😃"  # Intentional emoji to test encoding fix
-        reported_wages = 1500.00
-        calculated_wages = 1525.00
-        tip_credit_valid = False  
-        overtime_valid = True  
+        # ✅ Download the PDF file
+        pdf_filename = "uploaded_paystub.pdf"
+        pdf_path = os.path.join(os.getcwd(), pdf_filename)
+        os.system(f"curl -o {pdf_path} {file_url}")
+
+        # ✅ Extract text from the pay stub using OCR
+        extracted_text = extract_text_from_pdf(pdf_path)
+        if not extracted_text:
+            return jsonify({"error": "OCR extraction failed"}), 500
+
+        # ✅ Parse extracted text (Basic Parsing for Employee Name & Wages)
+        employee_name = re.search(r"Employee Name:\s*(.*)", extracted_text)
+        reported_wages = re.search(r"Total Wages:\s*\$?([\d,]+\.?\d*)", extracted_text)
+
+        employee_name = employee_name.group(1).strip() if employee_name else "Unknown Employee"
+        reported_wages = float(reported_wages.group(1).replace(",", "")) if reported_wages else 0.00
+
+        # ✅ Placeholder logic for compliance checks (replace with actual compliance logic)
+        calculated_wages = reported_wages  # Assume reported wages are correct for now
+        tip_credit_valid = "tip credit" in extracted_text.lower()
+        overtime_valid = "overtime" in extracted_text.lower()
         status = "✅ Wages Match!" if reported_wages == calculated_wages else "⚠️ Mismatch Detected!"
 
         # ✅ Ensure text is clean before adding to PDF
         clean_employee_name = clean_text(employee_name)
         clean_status = clean_text(status)
 
-        # ✅ Set PDF Path
+        # ✅ Set PDF Path for Compliance Report
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        pdf_filename = f"paystub_report_{timestamp}.pdf"
-        pdf_path = os.path.join(os.getcwd(), pdf_filename)
+        report_filename = f"paystub_report_{timestamp}.pdf"
+        report_path = os.path.join(os.getcwd(), report_filename)
 
-        # ✅ Generate PDF Report
+        # ✅ Generate Compliance Report PDF
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", style="", size=12)
@@ -135,29 +158,17 @@ def process_paystub():
         pdf.set_font("Arial", style="B", size=12)
         pdf.cell(200, 10, f"Status: {clean_status}", ln=True, align="L")
 
-        # ✅ Save PDF
-        print(f"📂 Attempting to save PDF to: {pdf_path}")
-        pdf.output(pdf_path, "F")
-
-        # ✅ Check if PDF was created correctly
-        if not os.path.exists(pdf_path):
-            print(f"❌ ERROR: PDF file was NOT created at {pdf_path}")
-            return jsonify({"error": "PDF file was not generated"}), 500
-
-        file_size = os.path.getsize(pdf_path)
-        if file_size < 500:  # Less than 500 bytes is suspicious
-            print(f"❌ ERROR: PDF file is too small ({file_size} bytes). It may be corrupted.")
-            return jsonify({"error": "PDF file is invalid"}), 500
-
-        print(f"✅ PDF file successfully created at {pdf_path}, size: {file_size} bytes")
+        # ✅ Save PDF Report
+        print(f"📂 Attempting to save PDF to: {report_path}")
+        pdf.output(report_path, "F")
 
         # ✅ Send Email with Attachment
-        email_success = send_email_with_attachment(email, pdf_path)
+        email_success = send_email_with_attachment(email, report_path)
         if not email_success:
             return jsonify({"error": "Report generated but email failed"}), 500
 
         # ✅ Return the PDF file
-        return send_file(pdf_path, mimetype="application/pdf", as_attachment=True)
+        return send_file(report_path, mimetype="application/pdf", as_attachment=True)
 
     except Exception as e:
         print(f"❌ ERROR: {e}")
@@ -165,6 +176,5 @@ def process_paystub():
 
 # ✅ Ensure Flask runs correctly on Render
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Default to port 5000
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
-
