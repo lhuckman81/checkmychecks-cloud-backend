@@ -7,3 +7,6 @@ pdf2image
 pytesseract
 unidecode
 requests
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
