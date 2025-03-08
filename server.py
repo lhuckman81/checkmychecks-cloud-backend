@@ -171,9 +171,4 @@ def process_paystub():
 
     except Exception as e:
         print(f"❌ ERROR: {e}")
-        return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
-
-# ✅ Run Flask App
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    
