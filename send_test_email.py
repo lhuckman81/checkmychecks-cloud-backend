@@ -17,7 +17,7 @@ def send_test_email():
         msg = EmailMessage()
         msg["Subject"] = "SMTP Test Email"
         msg["From"] = EMAIL_SENDER
-        msg["To"] = "your-real-email@gmail.com"  # Update with a real test email
+        msg["To"] = "lhuckman@gmail.com"  # Update with a real test email
         msg.set_content("This is a test email from CheckMyChecks.")
 
         print("🔗 Connecting to SMTP server...")

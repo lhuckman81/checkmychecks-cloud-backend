@@ -17,6 +17,8 @@ unidecode
 # Cloud Services
 google-cloud-storage
 google-api-python-client
+PyPDF2  # Added PyPDF2 here
+email-validator
 google-auth
 
 # Networking and Validation
