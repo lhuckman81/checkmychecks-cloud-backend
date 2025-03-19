@@ -7,49 +7,52 @@ import requests
 import json
 import cv2
 import numpy as np
+import tempfile  # ✅ Added to fix PDF file storage
 from fpdf import FPDF
 from flask import Flask, request, jsonify, send_file
 from email.message import EmailMessage
 from unidecode import unidecode
 from datetime import datetime
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-from google.oauth2 import service_account
 from io import BytesIO
 
 app = Flask(__name__)
 
-# ✅ Load Email Credentials from Environment Variables
+# ✅ Email Credentials from Environment Variables
 EMAIL_SENDER = os.getenv("EMAIL_SENDER", "info@mytips.pro")
-EMAIL_AUTH_USER = os.getenv("EMAIL_AUTH_USER", "leif@mytips.pro")  # Login email
+EMAIL_AUTH_USER = os.getenv("EMAIL_AUTH_USER", "leif@mytips.pro")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 SMTP_SERVER = os.getenv("EMAIL_SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("EMAIL_SMTP_PORT", 465))
 
-# ✅ Google Drive API Setup
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
-SERVICE_ACCOUNT_FILE = "service_account.json"  # Replace with your service account JSON file
+# ✅ Google Drive API Setup via OIDC Token
+OIDC_TOKEN_PATH = "/var/run/secrets/tokens/oidc-token"
+DRIVE_API_URL = "https://www.googleapis.com/drive/v3/files"
 
-def get_drive_service():
-    """Authenticate and return a Google Drive service instance."""
-    creds = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SCOPES
-    )
-    return build("drive", "v3", credentials=creds)
+def get_oidc_token():
+    """Retrieve OIDC token for authentication."""
+    try:
+        with open(OIDC_TOKEN_PATH, "r") as token_file:
+            return token_file.read().strip()
+    except Exception as e:
+        print(f"❌ Error reading OIDC token: {e}")
+        return None
 
 def download_file_from_drive(file_id):
-    """Download a file from Google Drive given its file ID."""
+    """Download a file from Google Drive using OIDC authentication."""
     try:
-        service = get_drive_service()
-        request = service.files().get_media(fileId=file_id)
-        file_data = BytesIO()
-        downloader = MediaIoBaseDownload(file_data, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
+        oidc_token = get_oidc_token()
+        if not oidc_token:
+            return None
 
-        file_data.seek(0)
-        return file_data
+        headers = {"Authorization": f"Bearer {oidc_token}"}
+        download_url = f"{DRIVE_API_URL}/{file_id}?alt=media"
+        
+        response = requests.get(download_url, headers=headers)
+        if response.status_code != 200:
+            print(f"❌ Failed to download file from Google Drive: {response.text}")
+            return None
+
+        return BytesIO(response.content)
     except Exception as e:
         print(f"❌ Error downloading file from Drive: {e}")
         return None
@@ -114,6 +117,8 @@ def process_paystub():
         file_url = data["file_url"]
         email = data["email"]
 
+        temp_dir = tempfile.gettempdir()  # ✅ Cross-platform temp directory
+
         # ✅ Handle Google Drive file downloads
         if "drive.google.com" in file_url:
             match = re.search(r"id=([a-zA-Z0-9_-]+)", file_url)
@@ -125,7 +130,7 @@ def process_paystub():
             if not file_data:
                 return jsonify({"error": "Failed to download file from Google Drive"}), 500
 
-            pdf_path = f"uploads/paystub_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            pdf_path = os.path.join(temp_dir, f"paystub_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
             with open(pdf_path, "wb") as f:
                 f.write(file_data.read())
         else:
@@ -134,7 +139,7 @@ def process_paystub():
             if response.status_code != 200:
                 return jsonify({"error": "Could not download file"}), 400
 
-            pdf_path = f"uploads/paystub_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            pdf_path = os.path.join(temp_dir, f"paystub_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
             with open(pdf_path, "wb") as f:
                 f.write(response.content)
 
@@ -144,7 +149,7 @@ def process_paystub():
             return jsonify({"error": "OCR failed to extract pay stub data"}), 500
 
         # ✅ Extract relevant info using regex
-        employee_name_match = re.search(r"EMPLOYEE\s+([\w\s]+)", extracted_text)
+        employee_name_match = re.search(r"EMPLOYEE[:\s]+([\w\s]+)", extracted_text, re.IGNORECASE)
         reported_wages_match = re.search(r"NET PAY:\s*\$([\d,]+.\d{2})", extracted_text)
         hours_match = re.search(r"Total Hours:\s*([\d.]+)", extracted_text)
 
@@ -152,47 +157,29 @@ def process_paystub():
         reported_wages = float(reported_wages_match.group(1).replace(",", "")) if reported_wages_match else 0.00
         total_hours = float(hours_match.group(1)) if hours_match else 0.00
 
-        # ✅ Compliance Check Logic
-        calculated_wages = reported_wages * 1.05  # Simulated Calculation
-        tip_credit_valid = reported_wages >= 100  # Fake check for demo
-        overtime_valid = total_hours <= 40  # Fake check for demo
+        # ✅ Compliance Check Logic (Needs a real formula)
+        calculated_wages = reported_wages * 1.05  # Placeholder logic
         status = "✅ Wages Match!" if reported_wages == calculated_wages else "⚠️ Mismatch Detected!"
 
         # ✅ Generate PDF Report
-        pdf_filename = f"paystub_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        pdf_path = os.path.join(os.getcwd(), pdf_filename)
-
+        pdf_filename = os.path.join(temp_dir, f"paystub_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", style="", size=12)
-
-        # ✅ Title
+        pdf.set_font("Arial", size=12)
         pdf.cell(200, 10, "Pay Stub Compliance Report", ln=True, align="L")
-        pdf.ln(10)
-
-        # ✅ Employee Information
         pdf.cell(200, 10, f"Employee: {clean_text(employee_name)}", ln=True)
-        pdf.ln(5)
+        pdf.cell(200, 10, f"Status: {clean_text(status)}", ln=True)
+        pdf.output(pdf_filename, "F")
 
-        # ✅ Compliance Summary
-        pdf.cell(200, 10, f"Status: {clean_text(status)}", ln=True, align="L")
-
-        # ✅ Save PDF
-        pdf.output(pdf_path, "F")
-        print(f"✅ PDF file successfully created at {pdf_path}")
-
-        # ✅ Send Email with Attachment
-        email_success = send_email_with_attachment(email, pdf_path)
+        email_success = send_email_with_attachment(email, pdf_filename)
         if not email_success:
             return jsonify({"error": "Report generated but email failed"}), 500
 
-        return send_file(pdf_path, mimetype="application/pdf", as_attachment=True)
+        return send_file(pdf_filename, mimetype="application/pdf", as_attachment=True)
 
     except Exception as e:
         print(f"❌ ERROR: {e}")
         return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
 
-# ✅ Run Flask App
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)

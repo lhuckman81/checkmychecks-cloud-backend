@@ -1,13 +1,24 @@
+# Web Framework
 flask
-fpdf
+flask-cors
 gunicorn
-numpy
-opencv-python-headless
+
+# PDF Processing
+PyPDF2
 pdf2image
+fpdf
 pytesseract
+opencv-python-headless
+
+# Data Processing
+numpy
 unidecode
-requests
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
+
+# Cloud Services
+google-cloud-storage
 google-api-python-client
+google-auth
+
+# Networking and Validation
+requests
+email-validator
