@@ -11,3 +11,5 @@ google-auth
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
+PyPDF2  # Added PyPDF2 here
+email-validator
