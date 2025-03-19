@@ -16,8 +16,8 @@ COPY . .
 # Copy the client_secret file to the /app directory
 COPY client_secret.json /app/
 
-# Expose the application port
-EXPOSE 5000
+# Cloud Run automatically assigns a PORT environment variable
+# No need for EXPOSE as Cloud Run handles this
 
-# Use gunicorn with multiple workers for better performance
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "server:app"]
+# Use gunicorn with the environment-provided PORT 
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 server:app
