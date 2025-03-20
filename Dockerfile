@@ -13,9 +13,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application
 COPY . .
 
-# Copy the client_secret file to the /app directory (must be after the previous COPY)
-COPY client_secret.json /app/
-
 # Cloud Run automatically assigns a PORT environment variable
 # No need for EXPOSE as Cloud Run handles this
 
