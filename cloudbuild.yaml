@@ -1,14 +1,19 @@
 steps:
-  - name: 'gcr.io/cloud-builders/docker'
+  # Step 1: Access secret and create the client_secret.json file
+  - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        # Access the secret and write to a file
-        echo "$$CLIENT_SECRET" > /workspace/client_secret.json
-        # Build the Docker image
-        docker build -t gcr.io/$PROJECT_ID/checkmychecks-cloud-backend .
+        echo "$CLIENT_SECRET" > client_secret.json
+        cat client_secret.json
+    id: 'create-secret-file'
     secretEnv: ['CLIENT_SECRET']
+
+  # Step 2: Build the Docker image with the secret file available
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/checkmychecks-cloud-backend', '.']
+    waitFor: ['create-secret-file']
 
 images:
   - 'gcr.io/$PROJECT_ID/checkmychecks-cloud-backend'
