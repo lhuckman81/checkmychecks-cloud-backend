@@ -6,43 +6,28 @@ import logging
 import traceback
 import hashlib
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 
 import requests
 import PyPDF2
-from flask import Flask, request, jsonify, send_file, redirect, url_for
+from flask import Flask, request, jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from fpdf import FPDF
 import email_validator
-import numpy as np
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 # Google Cloud libraries
-try:
-    from google.cloud import storage
-    from google.cloud import firestore
-except ImportError:
-    # Try alternate import path if the direct one fails
-    from google.cloud.firestore_v1 import Client as firestore_client
-    
-    # Create a compatibility wrapper
-    class FirestoreCompatibilityWrapper:
-        def __init__(self):
-            pass
-            
-        def Client(self):
-            return firestore_client()
-    
-    # Create the compatibility module
-    firestore = FirestoreCompatibilityWrapper()
+from google.cloud import storage
+from google.cloud import firestore
 from flask_mail import Mail, Message
 
 # Constants
 MINIMUM_WAGE = float(os.getenv('MINIMUM_WAGE', '15.0'))
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB max file size
 ALLOWED_EXTENSIONS = {'pdf'}
+BUCKET_ID = os.getenv('BUCKET_ID', "cs-poc-zgdkpqzt6vx3fwnl4kk8dky_cloudbuild")
 
 # Configure logging
 logging.basicConfig(
@@ -67,20 +52,19 @@ limiter = Limiter(
 )
 
 # Configure Flask-Mail
-app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
-app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', '587'))
-app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() in ['true', '1', 't']
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', 'info@mytips.pro')
+app.config.update(
+    MAIL_SERVER=os.getenv('MAIL_SERVER', 'smtp.gmail.com'),
+    MAIL_PORT=int(os.getenv('MAIL_PORT', '587')),
+    MAIL_USE_TLS=os.getenv('MAIL_USE_TLS', 'True').lower() in ['true', '1', 't'],
+    MAIL_USERNAME=os.getenv('MAIL_USERNAME'),
+    MAIL_PASSWORD=os.getenv('MAIL_PASSWORD'),
+    MAIL_DEFAULT_SENDER=os.getenv('MAIL_DEFAULT_SENDER', 'info@mytips.pro')
+)
 
 mail = Mail(app)
 
 # Initialize Firestore client
 db = firestore.Client()
-
-# Bucket ID
-BUCKET_ID = os.getenv('BUCKET_ID', "cs-poc-zgdkpqzt6vx3fwnl4kk8dky_cloudbuild")
 
 
 class StorageService:
@@ -149,6 +133,32 @@ class StorageService:
 
 
 class PaystubProcessor:
+    """Process paystubs for compliance checking"""
+    
+    # Define regex patterns as class constants
+    PATTERNS = {
+        'employee_name': [
+            r"EMPLOYEE\s*NAME:\s*([\w\s]+)",
+            r"NAME:\s*([\w\s]+)",
+            r"EMPLOYEE:\s*([\w\s]+)"
+        ],
+        'net_pay': [
+            r"NET\s*PAY:\s*\$?([\d,]+\.\d{2})",
+            r"NET\s*PAY\s*\$?([\d,]+\.\d{2})",
+            r"TOTAL\s*NET\s*PAY:\s*\$?([\d,]+\.\d{2})"
+        ],
+        'total_hours': [
+            r"TOTAL\s*HOURS:\s*([\d.]+)",
+            r"HOURS\s*WORKED:\s*([\d.]+)",
+            r"HOURS:\s*([\d.]+)"
+        ],
+        'gross_pay': [
+            r"GROSS\s*PAY:\s*\$?([\d,]+\.\d{2})",
+            r"GROSS\s*EARNINGS:\s*\$?([\d,]+\.\d{2})",
+            r"TOTAL\s*GROSS:\s*\$?([\d,]+\.\d{2})"
+        ]
+    }
+    
     def __init__(self, temp_dir: str = '/tmp'):
         """Initialize the Paystub Processor
         
@@ -226,24 +236,9 @@ class PaystubProcessor:
             Extracted text or empty string on failure
         """
         try:
-            # Verify file exists
-            if not os.path.exists(pdf_path):
-                logger.error(f"PDF file not found: {pdf_path}")
-                return ""
+            # Verify file exists and is valid
+            self._validate_pdf_file(pdf_path)
                 
-            # Check file size
-            file_size = os.path.getsize(pdf_path)
-            if file_size == 0:
-                logger.error(f"PDF file is empty: {pdf_path}")
-                return ""
-                
-            # Check file is actually a PDF
-            with open(pdf_path, 'rb') as file:
-                header = file.read(5)
-                if header != b'%PDF-':
-                    logger.error(f"File is not a valid PDF: {pdf_path}")
-                    return ""
-                    
             # Process the PDF
             with open(pdf_path, 'rb') as file:
                 try:
@@ -274,6 +269,32 @@ class PaystubProcessor:
             logger.error(f"Text extraction failed: {e}")
             logger.error(traceback.format_exc())
             return ""
+    
+    def _validate_pdf_file(self, pdf_path: str) -> bool:
+        """Validate that the file exists, is not empty, and is actually a PDF
+        
+        Args:
+            pdf_path: Path to PDF file
+            
+        Returns:
+            True if valid, False otherwise. Raises exception if invalid.
+        """
+        # Verify file exists
+        if not os.path.exists(pdf_path):
+            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+                
+        # Check file size
+        file_size = os.path.getsize(pdf_path)
+        if file_size == 0:
+            raise ValueError(f"PDF file is empty: {pdf_path}")
+                
+        # Check file is actually a PDF
+        with open(pdf_path, 'rb') as file:
+            header = file.read(5)
+            if header != b'%PDF-':
+                raise ValueError(f"File is not a valid PDF: {pdf_path}")
+        
+        return True
 
     def parse_paystub_data(self, text: str) -> Dict[str, Any]:
         """Parse paystub data with robust error handling
@@ -288,33 +309,9 @@ class PaystubProcessor:
             logger.error("No text provided for parsing")
             return {}
             
-        results = {}  # Initialize results here before the try block
+        results = {}  # Initialize results
         try:
-            # Robust regex patterns with fallbacks
-            patterns = {
-                'employee_name': [
-                    r"EMPLOYEE\s*NAME:\s*([\w\s]+)",
-                    r"NAME:\s*([\w\s]+)",
-                    r"EMPLOYEE:\s*([\w\s]+)"
-                ],
-                'net_pay': [
-                    r"NET\s*PAY:\s*\$?([\d,]+\.\d{2})",
-                    r"NET\s*PAY\s*\$?([\d,]+\.\d{2})",
-                    r"TOTAL\s*NET\s*PAY:\s*\$?([\d,]+\.\d{2})"
-                ],
-                'total_hours': [
-                    r"TOTAL\s*HOURS:\s*([\d.]+)",
-                    r"HOURS\s*WORKED:\s*([\d.]+)",
-                    r"HOURS:\s*([\d.]+)"
-                ],
-                'gross_pay': [
-                    r"GROSS\s*PAY:\s*\$?([\d,]+\.\d{2})",
-                    r"GROSS\s*EARNINGS:\s*\$?([\d,]+\.\d{2})",
-                    r"TOTAL\s*GROSS:\s*\$?([\d,]+\.\d{2})"
-                ]
-            }
-
-            for key, pattern_list in patterns.items():
+            for key, pattern_list in self.PATTERNS.items():
                 for pattern in pattern_list:
                     match = re.search(pattern, text, re.IGNORECASE)
                     if match:
@@ -336,18 +333,6 @@ class PaystubProcessor:
         
         return results
 
-    def is_total_compensation_valid(self, net_pay: float, gross_pay: float) -> bool:
-        """Check if total compensation is valid.
-        
-        Args:
-            net_pay: Net pay amount
-            gross_pay: Gross pay amount
-            
-        Returns:
-            True if both net_pay and gross_pay are greater than 0, otherwise False
-        """
-        return net_pay > 0 and gross_pay > 0
-
     def perform_compliance_checks(self, data: Dict[str, Any]) -> Dict[str, bool]:
         """Perform compliance checks on paystub data.
         
@@ -368,6 +353,9 @@ class PaystubProcessor:
         total_hours = data.get('total_hours', 0)
         gross_pay = data.get('gross_pay', 0)
 
+        # Check total compensation validity
+        checks['total_compensation_valid'] = net_pay > 0 and gross_pay > 0
+
         # Only perform calculations if we have valid values
         if net_pay > 0 and total_hours > 0:
             # Calculate the regular hourly rate
@@ -376,18 +364,30 @@ class PaystubProcessor:
             # Check minimum wage compliance
             checks['minimum_wage'] = regular_hourly_rate >= MINIMUM_WAGE
 
-            # Check overtime compliance
-            if total_hours > 40:
-                overtime_hours = total_hours - 40
-                overtime_pay = gross_pay - (40 * regular_hourly_rate)
-                checks['overtime_compliant'] = overtime_pay >= (overtime_hours * regular_hourly_rate * 1.5)
-            else:
-                checks['overtime_compliant'] = True
-
-        # Check total compensation validity
-        checks['total_compensation_valid'] = self.is_total_compensation_valid(net_pay, gross_pay)
+            # Check overtime compliance (if applicable)
+            checks['overtime_compliant'] = self._check_overtime_compliance(
+                total_hours, regular_hourly_rate, gross_pay
+            )
 
         return checks
+    
+    def _check_overtime_compliance(self, hours: float, hourly_rate: float, gross_pay: float) -> bool:
+        """Check if overtime pay complies with regulations
+        
+        Args:
+            hours: Total hours worked
+            hourly_rate: Regular hourly rate
+            gross_pay: Gross pay amount
+            
+        Returns:
+            True if overtime pay complies with regulations, False otherwise
+        """
+        if hours <= 40:
+            return True
+            
+        overtime_hours = hours - 40
+        overtime_pay = gross_pay - (40 * hourly_rate)
+        return overtime_pay >= (overtime_hours * hourly_rate * 1.5)
 
     def generate_compliance_report(
         self, 
@@ -525,6 +525,7 @@ class PaystubProcessor:
                 logger.error(f"Error removing file {file_path}: {e}")
 
 
+# API Routes
 @app.route("/", methods=["GET"])
 def health_check():
     """Simple health check endpoint for Cloud Run"""
