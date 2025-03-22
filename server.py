@@ -15,8 +15,23 @@ import numpy as np  # For more robust calculations
 from flask_cors import CORS  # Add this import
 
 # Google Cloud libraries
-from google.cloud import storage
-from google.cloud import firestore
+try:
+    from google.cloud import storage
+    from google.cloud import firestore
+except ImportError:
+    # Try alternate import path if the direct one fails
+    from google.cloud.firestore_v1 import Client as firestore_client
+    
+    # Create a compatibility wrapper
+    class FirestoreCompatibilityWrapper:
+        def __init__(self):
+            pass
+            
+        def Client(self):
+            return firestore_client()
+    
+    # Create the compatibility module
+    firestore = FirestoreCompatibilityWrapper()
 from flask_mail import Mail, Message
 
 # Configure logging
