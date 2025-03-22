@@ -2,6 +2,7 @@
 flask
 flask-cors
 gunicorn
+flask-limiter
 flask-mail
 
 # PDF Processing
@@ -19,10 +20,12 @@ unidecode
 google-cloud-storage
 google-cloud-firestore  # Add this line - explicit Firestore dependency
 google-api-python-client
-PyPDF2
+PyPDF2  # Added PyPDF2 here
 email-validator
 google-auth
 
 # Networking and Validation
 requests
-email-validator
+
+# Utilities
+werkzeug
