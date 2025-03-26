@@ -577,3 +577,176 @@ def upload_paystub():
         if not email:
             logger.error(f"Request {request_id}: Email is required")
             return jsonify({"error": "Email is required"}), 400
+        email_error = processor.validate_email(email)
+        if email_error:
+            logger.error(f"Request {request_id}: Invalid email - {email}")
+            return jsonify({"error": email_error}), 400
+            
+        # Upload to GCS
+        logger.info(f"Request {request_id}: Uploading file: {file.filename}")
+        filename = processor.storage_service.upload_file(file, "paystub_uploads")
+        
+        # Set initial processing status
+        processor.update_processing_status(filename, email, "uploaded", "File uploaded, awaiting processing")
+        
+        # Return success
+        return jsonify({
+            "message": "File uploaded successfully",
+            "file_url": filename,
+            "email": email,
+            "status": "uploaded",
+            "request_id": request_id
+        })
+        
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Request {request_id}: Upload failed - {error_message}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "error": "File upload failed", 
+            "details": error_message,
+            "request_id": request_id
+        }), 500
+
+
+@app.route("/process-paystub", methods=["POST"])
+@limiter.limit("5 per minute")
+def process_paystub():
+    """Process a previously uploaded paystub"""
+    request_id = uuid.uuid4().hex
+    processor = PaystubProcessor()
+    
+    try:
+        # Validate request data
+        data = request.get_json()
+        if not data or "file_url" not in data or "email" not in data:
+            logger.error(f"Request {request_id}: Missing required fields")
+            return jsonify({"error": "Missing required fields", "request_id": request_id}), 400
+
+        file_url = data['file_url']
+        email = data['email']
+        
+        # Update status to processing
+        processor.update_processing_status(file_url, email, "processing", "Started processing paystub")
+        logger.info(f"Request {request_id}: Processing paystub for {email}, file: {file_url}")
+
+        # Validate email again
+        email_error = processor.validate_email(email)
+        if email_error:
+            processor.update_processing_status(file_url, email, "failed", email_error)
+            return jsonify({"error": email_error, "request_id": request_id}), 400
+
+        # Download PDF from GCS
+        logger.info(f"Request {request_id}: Downloading PDF from GCS")
+        pdf_path = processor.download_pdf(file_url)
+        if not pdf_path:
+            processor.update_processing_status(file_url, email, "failed", "PDF download failed")
+            return jsonify({"error": "PDF download failed from GCS", "request_id": request_id}), 400
+
+        # Extract text from the PDF
+        logger.info(f"Request {request_id}: Extracting text from PDF")
+        extracted_text = processor.extract_pdf_text(pdf_path)
+        if not extracted_text:
+            processor.update_processing_status(file_url, email, "failed", "Text extraction failed")
+            return jsonify({"error": "Text extraction failed", "request_id": request_id}), 400
+
+        # Parse paystub data
+        logger.info(f"Request {request_id}: Parsing paystub data")
+        paystub_data = processor.parse_paystub_data(extracted_text)
+        if not paystub_data:
+            processor.update_processing_status(file_url, email, "failed", "Unable to parse paystub data")
+            return jsonify({"error": "Unable to parse pay stub data", "request_id": request_id}), 400
+
+        # Perform compliance checks
+        logger.info(f"Request {request_id}: Performing compliance checks")
+        compliance_results = processor.perform_compliance_checks(paystub_data)
+
+        # Generate compliance report
+        logger.info(f"Request {request_id}: Generating compliance report")
+        report_path = processor.generate_compliance_report(paystub_data, compliance_results)
+        
+        # Check if report was generated
+        if not os.path.exists(report_path):
+            processor.update_processing_status(file_url, email, "failed", "Failed to generate report")
+            return jsonify({"error": "Failed to generate the compliance report", "request_id": request_id}), 500
+
+        # Send email with the report
+        logger.info(f"Request {request_id}: Sending email report to {email}")
+        email_sent = processor.send_email_report(email, report_path)
+        if not email_sent:
+            processor.update_processing_status(file_url, email, "failed", "Failed to send email")
+            return jsonify({"error": "Failed to send email", "request_id": request_id}), 500
+
+        # Update status on success
+        processor.update_processing_status(file_url, email, "completed", "Report sent via email")
+        
+        # Cleanup the temporary files
+        processor.cleanup_files(pdf_path, report_path)
+
+        return jsonify({
+            'message': 'Paystub processed and report sent successfully.',
+            'email': email,
+            'status': 'completed',
+            'request_id': request_id
+        })
+
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Request {request_id}: Processing failed - {error_message}")
+        logger.error(traceback.format_exc())
+        
+        # Update status on failure if we have the necessary info
+        if 'file_url' in locals() and 'email' in locals():
+            processor.update_processing_status(file_url, email, "failed", error_message)
+            
+        return jsonify({
+            "error": "Processing failed", 
+            "details": error_message,
+            "request_id": request_id
+        }), 500
+
+
+@app.route("/check-status", methods=["GET"])
+def check_status():
+    """Check the processing status of a file"""
+    file_url = request.args.get('file_url')
+    if not file_url:
+        return jsonify({"error": "Missing file_url parameter"}), 400
+
+    try:
+        # Generate document ID from file_url
+        processor = PaystubProcessor()
+        doc_id = processor.generate_document_id(file_url)
+        
+        # Get status from Firestore
+        doc_ref = db.collection('processing_status').document(doc_id)
+        doc = doc_ref.get()
+        
+        if doc.exists:
+            data = doc.to_dict()
+            return jsonify({
+                "file_url": file_url,
+                "status": data.get("status", "unknown"),
+                "message": data.get("message", ""),
+                "updated_at": data.get("updated_at", "")
+            })
+        else:
+            return jsonify({
+                "file_url": file_url,
+                "status": "unknown",
+                "message": "No status found for this file"
+            })
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Status check error: {error_message}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "error": "Failed to check status", 
+            "details": error_message
+        }), 500
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 8080))
+    debug = os.environ.get('DEBUG', 'False').lower() in ['true', '1', 't']
+    app.run(debug=debug, host='0.0.0.0', port=port)
