@@ -567,6 +567,8 @@ def upload_paystub():
         file = request.files['file']
         email = request.form.get('email')
         
+        logger.info(f"Request {request_id}: Processing upload for email: {email}, filename: {file.filename}")
+        
         # Validate inputs
         processor = PaystubProcessor()
         
@@ -589,6 +591,7 @@ def upload_paystub():
         # Upload to GCS
         logger.info(f"Request {request_id}: Uploading file: {file.filename}")
         filename = processor.storage_service.upload_file(file, "paystub_uploads")
+        logger.info(f"Request {request_id}: File uploaded successfully with path: {filename}")
         
         # Set initial processing status
         processor.update_processing_status(filename, email, "uploaded", "File uploaded, awaiting processing")
