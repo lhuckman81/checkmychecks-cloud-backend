@@ -42,7 +42,12 @@ logger = logging.getLogger(__name__)
 
 # Flask app initialization
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+# Enhanced CORS configuration
+CORS(app, resources={r"/*": {
+    "origins": "*", 
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"]
+}})
 
 # Add rate limiting
 limiter = Limiter(
