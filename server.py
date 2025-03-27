@@ -339,14 +339,7 @@ class PaystubProcessor:
         return results
 
     def perform_compliance_checks(self, data: Dict[str, Any]) -> Dict[str, bool]:
-        """Perform compliance checks on paystub data.
-        
-        Args:
-            data: Dictionary containing paystub data
-            
-        Returns:
-            Dictionary with compliance check results
-        """
+        """Perform compliance checks on paystub data."""
         checks = {
             'minimum_wage': False,
             'overtime_compliant': False,
@@ -354,9 +347,9 @@ class PaystubProcessor:
         }
 
         # Safely extract values with defaults
-        net_pay = data.get('net_pay', 0)
-        total_hours = data.get('total_hours', 0)
-        gross_pay = data.get('gross_pay', 0)
+        net_pay = float(data.get('net_pay', 0) or 0)
+        total_hours = float(data.get('total_hours', 0) or 0)
+        gross_pay = float(data.get('gross_pay', 0) or 0)
 
         # Check total compensation validity
         checks['total_compensation_valid'] = net_pay > 0 and gross_pay > 0
@@ -502,33 +495,6 @@ class PaystubProcessor:
         return doc_id
         
     def update_processing_status(self, file_url: str, email: str, status: str, message: str = "") -> bool:
-        """Update processing status in Firestore
-        
-        Args:
-            file_url: The file URL being processed
-            email: User's email address
-            status: Current status (processing, completed, failed)
-            message: Optional status message
-            
-        Returns:
-            True if update successful, False otherwise
-        """
-        try:
-            doc_id = self.generate_document_id(file_url)
-            doc_ref = db.collection('processing_status').document(doc_id)
-            doc_ref.set({
-                'file_url': file_url,
-                'email': email,
-                'status': status,
-                'message': message,
-                'updated_at': firestore.SERVER_TIMESTAMP
-            })
-            logger.info(f"Updated status for {file_url} to {status}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to update status: {e}")
-            logger.error(traceback.format_exc())
-            return False
         """Update processing status in Firestore
         
         Args:
@@ -787,6 +753,7 @@ def check_status():
             "error": "Failed to check status", 
             "details": error_message
         }), 500
+
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
