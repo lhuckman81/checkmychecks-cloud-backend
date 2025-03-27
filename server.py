@@ -474,7 +474,7 @@ class PaystubProcessor:
             logger.error(traceback.format_exc())
             return False
 
-   def generate_document_id(self, file_url: str) -> str:
+    def generate_document_id(self, file_url: str) -> str:
         """Generate a secure document ID for Firestore
         
         Args:
@@ -501,7 +501,7 @@ class PaystubProcessor:
         logger.info(f"Generated document ID: {doc_id}")
         return doc_id
         
-    def update_processing_status(self, file_url: str, email: str, status: str, message: str = "") -> bool:
+     def update_processing_status(self, file_url: str, email: str, status: str, message: str = "") -> bool:
         """Update processing status in Firestore
         
         Args:
