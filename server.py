@@ -18,25 +18,9 @@ import email_validator
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-# Google Cloud libraries - with compatibility layer
-try:
-    from google.cloud import storage
-    from google.cloud import firestore
-except ImportError:
-    # Try alternate import path if the direct one fails
-    from google.cloud.firestore_v1 import Client as firestore_client
-    
-    # Create a compatibility wrapper
-    class FirestoreCompatibilityWrapper:
-        def __init__(self):
-            pass
-            
-        def Client(self):
-            return firestore_client()
-    
-    # Create the compatibility module
-    firestore = FirestoreCompatibilityWrapper()
-
+# Google Cloud libraries
+from google.cloud import storage
+from google.cloud import firestore
 from flask_mail import Mail, Message
 
 # Constants
@@ -58,7 +42,12 @@ logger = logging.getLogger(__name__)
 
 # Flask app initialization
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+# Enhanced CORS configuration
+CORS(app, resources={r"/*": {
+    "origins": "*", 
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"]
+}})
 
 # Add rate limiting
 limiter = Limiter(
@@ -67,7 +56,7 @@ limiter = Limiter(
 )
 limiter.init_app(app)
 
-# Configure Flask-Mail using cleaner approach
+# Configure Flask-Mail
 app.config.update(
     MAIL_SERVER=os.getenv('MAIL_SERVER', 'smtp.gmail.com'),
     MAIL_PORT=int(os.getenv('MAIL_PORT', '587')),
@@ -151,7 +140,7 @@ class StorageService:
 class PaystubProcessor:
     """Process paystubs for compliance checking"""
     
-    # Define regex patterns as class constants for better organization
+    # Define regex patterns as class constants
     PATTERNS = {
         'employee_name': [
             r"EMPLOYEE\s*NAME:\s*([\w\s]+)",
@@ -252,7 +241,7 @@ class PaystubProcessor:
             Extracted text or empty string on failure
         """
         try:
-            # Validate the PDF file first
+            # Verify file exists and is valid
             self._validate_pdf_file(pdf_path)
                 
             # Process the PDF
@@ -311,24 +300,6 @@ class PaystubProcessor:
                 raise ValueError(f"File is not a valid PDF: {pdf_path}")
         
         return True
-        
-    def _check_overtime_compliance(self, hours: float, hourly_rate: float, gross_pay: float) -> bool:
-        """Check if overtime pay complies with regulations
-        
-        Args:
-            hours: Total hours worked
-            hourly_rate: Regular hourly rate
-            gross_pay: Gross pay amount
-            
-        Returns:
-            True if overtime pay complies with regulations, False otherwise
-        """
-        if hours <= 40:
-            return True
-            
-        overtime_hours = hours - 40
-        overtime_pay = gross_pay - (40 * hourly_rate)
-        return overtime_pay >= (overtime_hours * hourly_rate * 1.5)
 
     def parse_paystub_data(self, text: str) -> Dict[str, Any]:
         """Parse paystub data with robust error handling
@@ -402,9 +373,27 @@ class PaystubProcessor:
             checks['overtime_compliant'] = self._check_overtime_compliance(
                 total_hours, regular_hourly_rate, gross_pay
             )
-            
+
         return checks
+    
+    def _check_overtime_compliance(self, hours: float, hourly_rate: float, gross_pay: float) -> bool:
+        """Check if overtime pay complies with regulations
         
+        Args:
+            hours: Total hours worked
+            hourly_rate: Regular hourly rate
+            gross_pay: Gross pay amount
+            
+        Returns:
+            True if overtime pay complies with regulations, False otherwise
+        """
+        if hours <= 40:
+            return True
+            
+        overtime_hours = hours - 40
+        overtime_pay = gross_pay - (40 * hourly_rate)
+        return overtime_pay >= (overtime_hours * hourly_rate * 1.5)
+
     def generate_compliance_report(
         self, 
         employee_data: Dict[str, Any], 
@@ -494,10 +483,52 @@ class PaystubProcessor:
         Returns:
             A secure document ID
         """
-        # Create a hash of the file_url to use as the document ID
-        return hashlib.md5(file_url.encode()).hexdigest()
-
+        # Log the incoming file_url for debugging
+        logger.info(f"Generating document ID for file_url: {file_url}")
+        
+        # Normalize the file_url to ensure consistency
+        # Focus on the filename part if it has a path
+        if '/' in file_url:
+            parts = file_url.split('/')
+            normalized_url = '/'.join(parts[-2:]) if len(parts) >= 2 else file_url
+        else:
+            normalized_url = file_url
+            
+        logger.info(f"Normalized URL for ID generation: {normalized_url}")
+        
+        # Create a hash of the normalized file_url to use as the document ID
+        doc_id = hashlib.md5(normalized_url.encode()).hexdigest()
+        logger.info(f"Generated document ID: {doc_id}")
+        return doc_id
+        
     def update_processing_status(self, file_url: str, email: str, status: str, message: str = "") -> bool:
+        """Update processing status in Firestore
+        
+        Args:
+            file_url: The file URL being processed
+            email: User's email address
+            status: Current status (processing, completed, failed)
+            message: Optional status message
+            
+        Returns:
+            True if update successful, False otherwise
+        """
+        try:
+            doc_id = self.generate_document_id(file_url)
+            doc_ref = db.collection('processing_status').document(doc_id)
+            doc_ref.set({
+                'file_url': file_url,
+                'email': email,
+                'status': status,
+                'message': message,
+                'updated_at': firestore.SERVER_TIMESTAMP
+            })
+            logger.info(f"Updated status for {file_url} to {status}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update status: {e}")
+            logger.error(traceback.format_exc())
+            return False
         """Update processing status in Firestore
         
         Args:
@@ -564,6 +595,8 @@ def upload_paystub():
         file = request.files['file']
         email = request.form.get('email')
         
+        logger.info(f"Request {request_id}: Processing upload for email: {email}, filename: {file.filename}")
+        
         # Validate inputs
         processor = PaystubProcessor()
         
@@ -577,6 +610,7 @@ def upload_paystub():
         if not email:
             logger.error(f"Request {request_id}: Email is required")
             return jsonify({"error": "Email is required"}), 400
+            
         email_error = processor.validate_email(email)
         if email_error:
             logger.error(f"Request {request_id}: Invalid email - {email}")
@@ -585,6 +619,7 @@ def upload_paystub():
         # Upload to GCS
         logger.info(f"Request {request_id}: Uploading file: {file.filename}")
         filename = processor.storage_service.upload_file(file, "paystub_uploads")
+        logger.info(f"Request {request_id}: File uploaded successfully with path: {filename}")
         
         # Set initial processing status
         processor.update_processing_status(filename, email, "uploaded", "File uploaded, awaiting processing")
@@ -710,13 +745,19 @@ def process_paystub():
 def check_status():
     """Check the processing status of a file"""
     file_url = request.args.get('file_url')
+    email = request.args.get('email')
+    
+    logger.info(f"Status check requested for file: {file_url}, email: {email}")
+    
     if not file_url:
+        logger.error("Missing file_url parameter in status check request")
         return jsonify({"error": "Missing file_url parameter"}), 400
 
     try:
         # Generate document ID from file_url
         processor = PaystubProcessor()
         doc_id = processor.generate_document_id(file_url)
+        logger.info(f"Generated document ID: {doc_id} for status check")
         
         # Get status from Firestore
         doc_ref = db.collection('processing_status').document(doc_id)
@@ -724,6 +765,7 @@ def check_status():
         
         if doc.exists:
             data = doc.to_dict()
+            logger.info(f"Status found in Firestore: {data}")
             return jsonify({
                 "file_url": file_url,
                 "status": data.get("status", "unknown"),
@@ -731,6 +773,7 @@ def check_status():
                 "updated_at": data.get("updated_at", "")
             })
         else:
+            logger.warning(f"No status found in Firestore for document ID: {doc_id}")
             return jsonify({
                 "file_url": file_url,
                 "status": "unknown",
@@ -744,7 +787,6 @@ def check_status():
             "error": "Failed to check status", 
             "details": error_message
         }), 500
-
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
