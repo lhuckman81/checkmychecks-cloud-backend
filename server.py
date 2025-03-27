@@ -500,6 +500,7 @@ class PaystubProcessor:
     doc_id = hashlib.md5(normalized_url.encode()).hexdigest()
     logger.info(f"Generated document ID: {doc_id}")
     return doc_id
+       
     def update_processing_status(self, file_url: str, email: str, status: str, message: str = "") -> bool:
         """Update processing status in Firestore
         
