@@ -469,18 +469,32 @@ class PaystubProcessor:
             logger.error(traceback.format_exc())
             return False
 
-    def generate_document_id(self, file_url: str) -> str:
-        """Generate a secure document ID for Firestore
+   def generate_document_id(self, file_url: str) -> str:
+    """Generate a secure document ID for Firestore
+    
+    Args:
+        file_url: The file URL to hash
         
-        Args:
-            file_url: The file URL to hash
-            
-        Returns:
-            A secure document ID
-        """
-        # Create a hash of the file_url to use as the document ID
-        return hashlib.md5(file_url.encode()).hexdigest()
-
+    Returns:
+        A secure document ID
+    """
+    # Log the incoming file_url for debugging
+    logger.info(f"Generating document ID for file_url: {file_url}")
+    
+    # Normalize the file_url to ensure consistency
+    # Focus on the filename part if it has a path
+    if '/' in file_url:
+        parts = file_url.split('/')
+        normalized_url = '/'.join(parts[-2:]) if len(parts) >= 2 else file_url
+    else:
+        normalized_url = file_url
+        
+    logger.info(f"Normalized URL for ID generation: {normalized_url}")
+    
+    # Create a hash of the normalized file_url to use as the document ID
+    doc_id = hashlib.md5(normalized_url.encode()).hexdigest()
+    logger.info(f"Generated document ID: {doc_id}")
+    return doc_id
     def update_processing_status(self, file_url: str, email: str, status: str, message: str = "") -> bool:
         """Update processing status in Firestore
         
