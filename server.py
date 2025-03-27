@@ -529,35 +529,6 @@ class PaystubProcessor:
             logger.error(f"Failed to update status: {e}")
             logger.error(traceback.format_exc())
             return False
-       
-    def update_processing_status(self, file_url: str, email: str, status: str, message: str = "") -> bool:
-        """Update processing status in Firestore
-        
-        Args:
-            file_url: The file URL being processed
-            email: User's email address
-            status: Current status (processing, completed, failed)
-            message: Optional status message
-            
-        Returns:
-            True if update successful, False otherwise
-        """
-        try:
-            doc_id = self.generate_document_id(file_url)
-            doc_ref = db.collection('processing_status').document(doc_id)
-            doc_ref.set({
-                'file_url': file_url,
-                'email': email,
-                'status': status,
-                'message': message,
-                'updated_at': firestore.SERVER_TIMESTAMP
-            })
-            logger.info(f"Updated status for {file_url} to {status}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to update status: {e}")
-            logger.error(traceback.format_exc())
-            return False
 
     def cleanup_files(self, *file_paths) -> None:
         """Remove temporary files after processing
