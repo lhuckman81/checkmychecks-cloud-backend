@@ -339,14 +339,7 @@ class PaystubProcessor:
         return results
 
     def perform_compliance_checks(self, data: Dict[str, Any]) -> Dict[str, bool]:
-        """Perform compliance checks on paystub data.
-        
-        Args:
-            data: Dictionary containing paystub data
-            
-        Returns:
-            Dictionary with compliance check results
-        """
+        """Perform compliance checks on paystub data."""
         checks = {
             'minimum_wage': False,
             'overtime_compliant': False,
@@ -354,9 +347,9 @@ class PaystubProcessor:
         }
 
         # Safely extract values with defaults
-        net_pay = data.get('net_pay', 0)
-        total_hours = data.get('total_hours', 0)
-        gross_pay = data.get('gross_pay', 0)
+        net_pay = float(data.get('net_pay', 0) or 0)
+        total_hours = float(data.get('total_hours', 0) or 0)
+        gross_pay = float(data.get('gross_pay', 0) or 0)
 
         # Check total compensation validity
         checks['total_compensation_valid'] = net_pay > 0 and gross_pay > 0
