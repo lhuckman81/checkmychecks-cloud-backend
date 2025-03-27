@@ -714,13 +714,19 @@ def process_paystub():
 def check_status():
     """Check the processing status of a file"""
     file_url = request.args.get('file_url')
+    email = request.args.get('email')
+    
+    logger.info(f"Status check requested for file: {file_url}, email: {email}")
+    
     if not file_url:
+        logger.error("Missing file_url parameter in status check request")
         return jsonify({"error": "Missing file_url parameter"}), 400
 
     try:
         # Generate document ID from file_url
         processor = PaystubProcessor()
         doc_id = processor.generate_document_id(file_url)
+        logger.info(f"Generated document ID: {doc_id} for status check")
         
         # Get status from Firestore
         doc_ref = db.collection('processing_status').document(doc_id)
@@ -728,6 +734,7 @@ def check_status():
         
         if doc.exists:
             data = doc.to_dict()
+            logger.info(f"Status found in Firestore: {data}")
             return jsonify({
                 "file_url": file_url,
                 "status": data.get("status", "unknown"),
@@ -735,6 +742,7 @@ def check_status():
                 "updated_at": data.get("updated_at", "")
             })
         else:
+            logger.warning(f"No status found in Firestore for document ID: {doc_id}")
             return jsonify({
                 "file_url": file_url,
                 "status": "unknown",
@@ -748,7 +756,6 @@ def check_status():
             "error": "Failed to check status", 
             "details": error_message
         }), 500
-
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
