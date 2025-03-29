@@ -392,53 +392,99 @@ class PaystubProcessor:
         return overtime_pay >= (overtime_hours * hourly_rate * 1.5)
 
     def generate_compliance_report(
-        self,
-        employee_data: Dict[str, Any],
-        compliance_results: Dict[str, bool]
-    ) -> str:
-        """Generate PDF compliance report
+    self, 
+    employee_data: Dict[str, Any], 
+    compliance_results: Dict[str, bool]
+) -> str:
+    """Generate PDF compliance report with color-coded status
+    
+    Args:
+        employee_data: Employee data dictionary
+        compliance_results: Compliance check results
+        
+    Returns:
+        Path to generated PDF report
+    """
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
 
-        Args:
-            employee_data: Employee data dictionary
-            compliance_results: Compliance check results
+    # Report Title
+    pdf.set_text_color(0, 0, 0)  # Black
+    pdf.set_font("Arial", 'B', 14)  # Larger, bold font for title
+    pdf.cell(0, 10, "Pay Stub Compliance Report", ln=True, align='C')
+    pdf.ln(10)
 
-        Returns:
-            Path to generated PDF report
-        """
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
+    # Employee Information
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, f"Employee: {employee_data.get('employee_name', 'Unknown')}", ln=True)
+    pdf.ln(5)
 
-        # Report Title
-        pdf.cell(0, 10, "Pay Stub Compliance Report", ln=True, align='C')
-        pdf.ln(10)
+    # Paystub Details
+    pdf.set_font("Arial", 'B', 12)  # Bold for section title
+    pdf.cell(0, 10, "Paystub Details:", ln=True)
+    pdf.set_font("Arial", '', 12)  # Back to normal
+    
+    pdf.cell(0, 10, f"Total Hours: {employee_data.get('total_hours', 'N/A')}", ln=True)
+    
+    # Format currency with two decimal places
+    gross_pay = employee_data.get('gross_pay', 'N/A')
+    if isinstance(gross_pay, (int, float)):
+        gross_pay = f"${gross_pay:.2f}"
+    elif gross_pay != 'N/A':
+        gross_pay = f"${gross_pay}"
+        
+    net_pay = employee_data.get('net_pay', 'N/A')
+    if isinstance(net_pay, (int, float)):
+        net_pay = f"${net_pay:.2f}"
+    elif net_pay != 'N/A':
+        net_pay = f"${net_pay}"
+    
+    pdf.cell(0, 10, f"Gross Pay: {gross_pay}", ln=True)
+    pdf.cell(0, 10, f"Net Pay: {net_pay}", ln=True)
+    pdf.ln(5)
 
-        # Employee Information
-        pdf.cell(0, 10, f"Employee: {employee_data.get('employee_name', 'Unknown')}", ln=True)
-        pdf.ln(5)
+    # Compliance Checks
+    pdf.set_font("Arial", 'B', 12)  # Bold for section title
+    pdf.cell(0, 10, "Compliance Check Results:", ln=True)
+    pdf.set_font("Arial", '', 12)  # Back to normal
+    
+    for check, result in compliance_results.items():
+        check_name = check.replace('_', ' ').title()
+        
+        # First part of text - always black
+        pdf.set_text_color(0, 0, 0)  # Black
+        pdf.cell(pdf.get_string_width(f"{check_name}: "), 10, f"{check_name}: ")
+        
+        # Status text with color
+        if result:
+            pdf.set_text_color(0, 128, 0)  # Green for PASSED
+            status = "PASSED"
+        else:
+            pdf.set_text_color(220, 0, 0)  # Red for FAILED
+            status = "FAILED"
+            
+        pdf.cell(0, 10, status, ln=True)
+    
+    # Reset text color to black for any following content
+    pdf.set_text_color(0, 0, 0)
+    
+    # Add timestamp at the bottom
+    pdf.ln(10)
+    pdf.set_font("Arial", '', 10)
+    pdf.set_text_color(128, 128, 128)  # Gray
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    pdf.cell(0, 10, f"Report generated: {timestamp}", ln=True, align='C')
 
-        # Paystub Details
-        pdf.cell(0, 10, "Paystub Details:", ln=True)
-        pdf.cell(0, 10, f"Total Hours: {employee_data.get('total_hours', 'N/A')}", ln=True)
-        pdf.cell(0, 10, f"Gross Pay: ${employee_data.get('gross_pay', 'N/A')}", ln=True)
-        pdf.cell(0, 10, f"Net Pay: ${employee_data.get('net_pay', 'N/A')}", ln=True)
-        pdf.ln(5)
-
-        # Compliance Checks
-        pdf.cell(0, 10, "Compliance Check Results:", ln=True)
-        for check, result in compliance_results.items():
-            status = "✅ Passed" if result else "❌ Failed"
-            pdf.cell(0, 10, f"{check.replace('_', ' ').title()}: {status}", ln=True)
-
-        # Output the PDF
-        request_id = uuid.uuid4().hex[:8]
-        report_path = os.path.join(
-            self.temp_dir,
-            f"compliance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{request_id}.pdf"
-        )
-        pdf.output(report_path)
-        logger.info(f"Compliance report generated: {report_path}")
-        return report_path
+    # Output the PDF
+    request_id = uuid.uuid4().hex[:8]
+    report_path = os.path.join(
+        self.temp_dir, 
+        f"compliance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{request_id}.pdf"
+    )
+    pdf.output(report_path)
+    logger.info(f"Compliance report generated: {report_path}")
+    return report_path
 
     def send_email_report(self, email: str, report_path: str) -> bool:
         """Send email with compliance report
