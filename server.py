@@ -544,4 +544,32 @@ class PaystubProcessor:
         logger.info(f"Generated document ID: {doc_id}")
         return doc_id
 
-    def update_processing_status(self, file_url: str, email: str, status
+    def update_processing_status(self, file_url: str, email: str, status: str, message: str = "") -> bool:
+    """Update processing status in Firestore
+    
+    Args:
+        file_url: File URL
+        email: User email
+        status: Processing status
+        message: Optional status message
+        
+    Returns:
+        True if update succeeded, False otherwise
+    """
+    try:
+        doc_id = self.generate_document_id(file_url)
+        doc_ref = db.collection('processing_status').document(doc_id)
+        
+        doc_ref.set({
+            'file_url': file_url,
+            'email': email,
+            'status': status,
+            'message': message,
+            'updated_at': firestore.SERVER_TIMESTAMP
+        })
+        
+        logger.info(f"Updated processing status for {file_url} to {status}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to update processing status: {e}")
+        return False
