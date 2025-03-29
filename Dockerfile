@@ -16,5 +16,5 @@ COPY . .
 # Cloud Run automatically assigns a PORT environment variable
 # No need for EXPOSE as Cloud Run handles this
 
-# Use gunicorn with the environment-provided PORT 
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 server:app
+# Change this line
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 server_new:app
