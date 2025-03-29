@@ -628,3 +628,42 @@ def check_status():
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+@app.route('/test-download', methods=['GET'])
+def test_download():
+    file_url = request.args.get('file_url')
+    if not file_url:
+        return jsonify({'error': 'file_url is required'}), 400
+    
+    try:
+        # Log the exact bucket and file path
+        logger.info(f"Testing download from bucket: {BUCKET_ID}")
+        logger.info(f"File path: {file_url}")
+        
+        # Try to download the file
+        logger.info(f"Initializing StorageService with bucket: {BUCKET_ID}")
+        storage_service = StorageService(BUCKET_ID)
+        
+        logger.info(f"Attempting to download: {file_url}")
+        pdf_path = storage_service.download_file(file_url, '/tmp')
+        
+        if pdf_path:
+            logger.info(f"Download successful, saved to: {pdf_path}")
+            return jsonify({
+                'success': True,
+                'message': f'Downloaded file to {pdf_path}',
+                'path': pdf_path
+            })
+        else:
+            logger.error("Download returned None")
+            return jsonify({
+                'success': False,
+                'message': 'Download failed with None result'
+            }), 500
+    except Exception as e:
+        logger.error(f"Download test error: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
