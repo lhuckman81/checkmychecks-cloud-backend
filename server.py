@@ -1,3 +1,6 @@
+The following is the content of `server.py` with fixed indentation issues:
+
+```python
 import os
 import re
 import json
@@ -42,9 +45,10 @@ logger = logging.getLogger(__name__)
 
 # Flask app initialization
 app = Flask(__name__)
+
 # Enhanced CORS configuration
 CORS(app, resources={r"/*": {
-    "origins": "*", 
+    "origins": "*",
     "methods": ["GET", "POST", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization"]
 }})
@@ -74,24 +78,24 @@ db = firestore.Client()
 
 class StorageService:
     """Service for handling Google Cloud Storage operations"""
-    
+
     def __init__(self, bucket_id: str):
         """Initialize the storage service
-        
+
         Args:
             bucket_id: Google Cloud Storage bucket ID
         """
         self.bucket_id = bucket_id
         self.client = storage.Client()
         self.bucket = self.client.bucket(bucket_id)
-    
+
     def upload_file(self, file, path_prefix: str = "") -> str:
         """Upload a file to Google Cloud Storage
-        
+
         Args:
             file: File object to upload
             path_prefix: Optional path prefix for the file
-            
+
         Returns:
             The path of the uploaded file
         """
@@ -100,24 +104,24 @@ class StorageService:
             safe_filename = secure_filename(file.filename)
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"{path_prefix}/{timestamp}_{safe_filename}"
-            
+
             # Upload the file
             blob = self.bucket.blob(filename)
             blob.upload_from_file(file)
-            
+
             logger.info(f"File uploaded to GCS: {filename}")
             return filename
         except Exception as e:
             logger.error(f"File upload failed: {e}")
             raise
-    
+
     def download_file(self, file_url: str, destination: str) -> str:
         """Download a file from Google Cloud Storage
-        
+
         Args:
             file_url: The path to the file in the bucket
             destination: The local directory to download to
-            
+
         Returns:
             The path to the downloaded file
         """
@@ -125,11 +129,11 @@ class StorageService:
             # Get just the filename part
             filename = os.path.basename(file_url)
             local_path = os.path.join(destination, filename)
-            
+
             # Download the file
             blob = self.bucket.blob(file_url)
             blob.download_to_filename(local_path)
-            
+
             logger.info(f"Downloaded file from GCS: {local_path}")
             return local_path
         except Exception as e:
@@ -139,7 +143,7 @@ class StorageService:
 
 class PaystubProcessor:
     """Process paystubs for compliance checking"""
-    
+
     # Define regex patterns as class constants
     PATTERNS = {
         'employee_name': [
@@ -163,10 +167,10 @@ class PaystubProcessor:
             r"TOTAL\s*GROSS:\s*\$?([\d,]+\.\d{2})"
         ]
     }
-    
+
     def __init__(self, temp_dir: str = '/tmp'):
         """Initialize the Paystub Processor
-        
+
         Args:
             temp_dir: Directory for temporary file storage
         """
@@ -176,10 +180,10 @@ class PaystubProcessor:
 
     def validate_email(self, email: str) -> str:
         """Validate the email using email_validator library
-        
+
         Args:
             email: Email address to validate
-            
+
         Returns:
             Error message if invalid, otherwise empty string
         """
@@ -191,37 +195,37 @@ class PaystubProcessor:
 
     def validate_file(self, file) -> str:
         """Validate the uploaded file
-        
+
         Args:
             file: File object to validate
-            
+
         Returns:
             Error message if invalid, otherwise empty string
         """
         if not file or file.filename == '':
             return "No file selected"
-            
+
         # Check file extension
         ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
         if ext not in ALLOWED_EXTENSIONS:
             return f"Only {', '.join(ALLOWED_EXTENSIONS)} files are allowed"
-            
+
         # Check file size
         file.seek(0, os.SEEK_END)
         size = file.tell()
         file.seek(0)  # Reset file pointer
-        
+
         if size > MAX_FILE_SIZE:
             return f"File size exceeds {MAX_FILE_SIZE / (1024 * 1024)}MB limit"
-            
+
         return ""
 
     def download_pdf(self, file_url: str) -> Optional[str]:
         """Download PDF from Google Cloud Storage
-        
+
         Args:
             file_url: The file URL within the GCS bucket
-            
+
         Returns:
             Path to the downloaded PDF or None if download fails
         """
@@ -233,17 +237,17 @@ class PaystubProcessor:
 
     def extract_pdf_text(self, pdf_path: str) -> str:
         """Extract text from PDF with robust error handling
-        
+
         Args:
             pdf_path: Path to PDF file
-            
+
         Returns:
             Extracted text or empty string on failure
         """
         try:
             # Verify file exists and is valid
             self._validate_pdf_file(pdf_path)
-                
+
             # Process the PDF
             with open(pdf_path, 'rb') as file:
                 try:
@@ -251,7 +255,7 @@ class PaystubProcessor:
                     if len(reader.pages) == 0:
                         logger.warning("PDF has no pages")
                         return ""
-                        
+
                     text = ""
                     for page in reader.pages:
                         try:
@@ -260,60 +264,60 @@ class PaystubProcessor:
                         except Exception as e:
                             logger.warning(f"Error extracting text from page: {e}")
                             # Continue with next page
-                    
+
                     if not text.strip():
                         logger.warning("No text extracted from PDF")
-                    
+
                     return text
-                    
+
                 except PyPDF2.errors.PdfReadError as e:
                     logger.error(f"PDF read error: {e}")
                     return ""
-                    
+
         except Exception as e:
             logger.error(f"Text extraction failed: {e}")
             logger.error(traceback.format_exc())
             return ""
-    
+
     def _validate_pdf_file(self, pdf_path: str) -> bool:
         """Validate that the file exists, is not empty, and is actually a PDF
-        
+
         Args:
             pdf_path: Path to PDF file
-            
+
         Returns:
             True if valid, False otherwise. Raises exception if invalid.
         """
         # Verify file exists
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
-                
+
         # Check file size
         file_size = os.path.getsize(pdf_path)
         if file_size == 0:
             raise ValueError(f"PDF file is empty: {pdf_path}")
-                
+
         # Check file is actually a PDF
         with open(pdf_path, 'rb') as file:
             header = file.read(5)
             if header != b'%PDF-':
                 raise ValueError(f"File is not a valid PDF: {pdf_path}")
-        
+
         return True
 
     def parse_paystub_data(self, text: str) -> Dict[str, Any]:
         """Parse paystub data with robust error handling
-        
+
         Args:
             text: Extracted text from PDF
-            
+
         Returns:
             Dictionary of extracted information
         """
         if not text:
             logger.error("No text provided for parsing")
             return {}
-            
+
         results = {}  # Initialize results
         try:
             for key, pattern_list in self.PATTERNS.items():
@@ -327,7 +331,7 @@ class PaystubProcessor:
                         except ValueError:
                             logger.warning(f"Failed to convert {key} value: {value}")
                             continue
-                
+
                 if key not in results:
                     results[key] = None
                     logger.warning(f"Could not extract {key}")
@@ -335,7 +339,7 @@ class PaystubProcessor:
         except Exception as e:
             logger.error(f"Paystub data parsing failed: {e}")
             logger.error(traceback.format_exc())
-        
+
         return results
 
     def perform_compliance_checks(self, data: Dict[str, Any]) -> Dict[str, bool]:
@@ -368,36 +372,36 @@ class PaystubProcessor:
             )
 
         return checks
-    
+
     def _check_overtime_compliance(self, hours: float, hourly_rate: float, gross_pay: float) -> bool:
         """Check if overtime pay complies with regulations
-        
+
         Args:
             hours: Total hours worked
             hourly_rate: Regular hourly rate
             gross_pay: Gross pay amount
-            
+
         Returns:
             True if overtime pay complies with regulations, False otherwise
         """
         if hours <= 40:
             return True
-            
+
         overtime_hours = hours - 40
         overtime_pay = gross_pay - (40 * hourly_rate)
         return overtime_pay >= (overtime_hours * hourly_rate * 1.5)
 
     def generate_compliance_report(
-        self, 
-        employee_data: Dict[str, Any], 
+        self,
+        employee_data: Dict[str, Any],
         compliance_results: Dict[str, bool]
     ) -> str:
         """Generate PDF compliance report
-        
+
         Args:
             employee_data: Employee data dictionary
             compliance_results: Compliance check results
-            
+
         Returns:
             Path to generated PDF report
         """
@@ -429,7 +433,7 @@ class PaystubProcessor:
         # Output the PDF
         request_id = uuid.uuid4().hex[:8]
         report_path = os.path.join(
-            self.temp_dir, 
+            self.temp_dir,
             f"compliance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{request_id}.pdf"
         )
         pdf.output(report_path)
@@ -438,11 +442,11 @@ class PaystubProcessor:
 
     def send_email_report(self, email: str, report_path: str) -> bool:
         """Send email with compliance report
-        
+
         Args:
             email: Recipient email address
             report_path: Path to the report file
-            
+
         Returns:
             True if email sent successfully, False otherwise
         """
@@ -453,7 +457,7 @@ class PaystubProcessor:
                 recipients=[email],
                 body="Please find your compliance report attached.",
             )
-            
+
             # Attach the report as a PDF file
             with open(report_path, "rb") as f:
                 msg.attach("compliance_report.pdf", "application/pdf", f.read())
@@ -469,16 +473,16 @@ class PaystubProcessor:
 
     def generate_document_id(self, file_url: str) -> str:
         """Generate a secure document ID for Firestore
-        
+
         Args:
             file_url: The file URL to hash
-            
+
         Returns:
             A secure document ID
         """
         # Log the incoming file_url for debugging
         logger.info(f"Generating document ID for file_url: {file_url}")
-        
+
         # Normalize the file_url to ensure consistency
         # Focus on the filename part if it has a path
         if '/' in file_url:
@@ -486,23 +490,23 @@ class PaystubProcessor:
             normalized_url = '/'.join(parts[-2:]) if len(parts) >= 2 else file_url
         else:
             normalized_url = file_url
-            
+
         logger.info(f"Normalized URL for ID generation: {normalized_url}")
-        
+
         # Create a hash of the normalized file_url to use as the document ID
         doc_id = hashlib.md5(normalized_url.encode()).hexdigest()
         logger.info(f"Generated document ID: {doc_id}")
         return doc_id
-        
+
     def update_processing_status(self, file_url: str, email: str, status: str, message: str = "") -> bool:
         """Update processing status in Firestore
-        
+
         Args:
             file_url: The file URL being processed
             email: User's email address
             status: Current status (processing, completed, failed)
             message: Optional status message
-            
+
         Returns:
             True if update successful, False otherwise
         """
@@ -525,7 +529,7 @@ class PaystubProcessor:
 
     def cleanup_files(self, *file_paths) -> None:
         """Remove temporary files after processing
-        
+
         Args:
             file_paths: Paths to files that should be deleted
         """
@@ -551,210 +555,11 @@ def upload_paystub():
     """Upload paystub file to Google Cloud Storage"""
     request_id = uuid.uuid4().hex
     logger.info(f"Request {request_id}: Starting file upload")
-    
+
     try:
         # Check if file is in request
         if 'file' not in request.files:
             logger.error(f"Request {request_id}: No file part in the request")
             return jsonify({"error": "No file part"}), 400
-            
-        file = request.files['file']
-        email = request.form.get('email')
-        
-        logger.info(f"Request {request_id}: Processing upload for email: {email}, filename: {file.filename}")
-        
-        # Validate inputs
-        processor = PaystubProcessor()
-        
-        # Check file
-        file_error = processor.validate_file(file)
-        if file_error:
-            logger.error(f"Request {request_id}: {file_error}")
-            return jsonify({"error": file_error}), 400
-            
-        # Check email
-        if not email:
-            logger.error(f"Request {request_id}: Email is required")
-            return jsonify({"error": "Email is required"}), 400
-            
-        email_error = processor.validate_email(email)
-        if email_error:
-            logger.error(f"Request {request_id}: Invalid email - {email}")
-            return jsonify({"error": email_error}), 400
-            
-        # Upload to GCS
-        logger.info(f"Request {request_id}: Uploading file: {file.filename}")
-        filename = processor.storage_service.upload_file(file, "paystub_uploads")
-        logger.info(f"Request {request_id}: File uploaded successfully with path: {filename}")
-        
-        # Set initial processing status
-        processor.update_processing_status(filename, email, "uploaded", "File uploaded, awaiting processing")
-        
-        # Return success
-        return jsonify({
-            "message": "File uploaded successfully",
-            "file_url": filename,
-            "email": email,
-            "status": "uploaded",
-            "request_id": request_id
-        })
-        
-    except Exception as e:
-        error_message = str(e)
-        logger.error(f"Request {request_id}: Upload failed - {error_message}")
-        logger.error(traceback.format_exc())
-        return jsonify({
-            "error": "File upload failed", 
-            "details": error_message,
-            "request_id": request_id
-        }), 500
 
-
-@app.route("/process-paystub", methods=["POST"])
-@limiter.limit("5 per minute")
-def process_paystub():
-    """Process a previously uploaded paystub"""
-    request_id = uuid.uuid4().hex
-    processor = PaystubProcessor()
-    
-    try:
-        # Validate request data
-        data = request.get_json()
-        if not data or "file_url" not in data or "email" not in data:
-            logger.error(f"Request {request_id}: Missing required fields")
-            return jsonify({"error": "Missing required fields", "request_id": request_id}), 400
-
-        file_url = data['file_url']
-        email = data['email']
-        
-        # Update status to processing
-        processor.update_processing_status(file_url, email, "processing", "Started processing paystub")
-        logger.info(f"Request {request_id}: Processing paystub for {email}, file: {file_url}")
-
-        # Validate email again
-        email_error = processor.validate_email(email)
-        if email_error:
-            processor.update_processing_status(file_url, email, "failed", email_error)
-            return jsonify({"error": email_error, "request_id": request_id}), 400
-
-        # Download PDF from GCS
-        logger.info(f"Request {request_id}: Downloading PDF from GCS")
-        pdf_path = processor.download_pdf(file_url)
-        if not pdf_path:
-            processor.update_processing_status(file_url, email, "failed", "PDF download failed")
-            return jsonify({"error": "PDF download failed from GCS", "request_id": request_id}), 400
-
-        # Extract text from the PDF
-        logger.info(f"Request {request_id}: Extracting text from PDF")
-        extracted_text = processor.extract_pdf_text(pdf_path)
-        if not extracted_text:
-            processor.update_processing_status(file_url, email, "failed", "Text extraction failed")
-            return jsonify({"error": "Text extraction failed", "request_id": request_id}), 400
-
-        # Parse paystub data
-        logger.info(f"Request {request_id}: Parsing paystub data")
-        paystub_data = processor.parse_paystub_data(extracted_text)
-        if not paystub_data:
-            processor.update_processing_status(file_url, email, "failed", "Unable to parse paystub data")
-            return jsonify({"error": "Unable to parse pay stub data", "request_id": request_id}), 400
-
-        # Perform compliance checks
-        logger.info(f"Request {request_id}: Performing compliance checks")
-        compliance_results = processor.perform_compliance_checks(paystub_data)
-
-        # Generate compliance report
-        logger.info(f"Request {request_id}: Generating compliance report")
-        report_path = processor.generate_compliance_report(paystub_data, compliance_results)
-        
-        # Check if report was generated
-        if not os.path.exists(report_path):
-            processor.update_processing_status(file_url, email, "failed", "Failed to generate report")
-            return jsonify({"error": "Failed to generate the compliance report", "request_id": request_id}), 500
-
-        # Send email with the report
-        logger.info(f"Request {request_id}: Sending email report to {email}")
-        email_sent = processor.send_email_report(email, report_path)
-        if not email_sent:
-            processor.update_processing_status(file_url, email, "failed", "Failed to send email")
-            return jsonify({"error": "Failed to send email", "request_id": request_id}), 500
-
-        # Update status on success
-        processor.update_processing_status(file_url, email, "completed", "Report sent via email")
-        
-        # Cleanup the temporary files
-        processor.cleanup_files(pdf_path, report_path)
-
-        return jsonify({
-            'message': 'Paystub processed and report sent successfully.',
-            'email': email,
-            'status': 'completed',
-            'request_id': request_id
-        })
-
-    except Exception as e:
-        error_message = str(e)
-        logger.error(f"Request {request_id}: Processing failed - {error_message}")
-        logger.error(traceback.format_exc())
-        
-        # Update status on failure if we have the necessary info
-        if 'file_url' in locals() and 'email' in locals():
-            processor.update_processing_status(file_url, email, "failed", error_message)
-            
-        return jsonify({
-            "error": "Processing failed", 
-            "details": error_message,
-            "request_id": request_id
-        }), 500
-
-
-@app.route("/check-status", methods=["GET"])
-def check_status():
-    """Check the processing status of a file"""
-    file_url = request.args.get('file_url')
-    email = request.args.get('email')
-    
-    logger.info(f"Status check requested for file: {file_url}, email: {email}")
-    
-    if not file_url:
-        logger.error("Missing file_url parameter in status check request")
-        return jsonify({"error": "Missing file_url parameter"}), 400
-
-    try:
-        # Generate document ID from file_url
-        processor = PaystubProcessor()
-        doc_id = processor.generate_document_id(file_url)
-        logger.info(f"Generated document ID: {doc_id} for status check")
-        
-        # Get status from Firestore
-        doc_ref = db.collection('processing_status').document(doc_id)
-        doc = doc_ref.get()
-        
-        if doc.exists:
-            data = doc.to_dict()
-            logger.info(f"Status found in Firestore: {data}")
-            return jsonify({
-                "file_url": file_url,
-                "status": data.get("status", "unknown"),
-                "message": data.get("message", ""),
-                "updated_at": data.get("updated_at", "")
-            })
-        else:
-            logger.warning(f"No status found in Firestore for document ID: {doc_id}")
-            return jsonify({
-                "file_url": file_url,
-                "status": "unknown",
-                "message": "No status found for this file"
-            })
-    except Exception as e:
-        error_message = str(e)
-        logger.error(f"Status check error: {error_message}")
-        logger.error(traceback.format_exc())
-        return jsonify({
-            "error": "Failed to check status", 
-            "details": error_message
-        }), 500
-
-if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 8080))
-    debug = os.environ.get('DEBUG', 'False').lower() in ['true', '1', 't']
-    app.run(debug=debug, host='0.0.0.0', port=port)
+        file = request.files
