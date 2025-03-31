@@ -3,6 +3,7 @@ import re
 import json
 import uuid
 import logging
+
 import traceback
 import hashlib
 from datetime import datetime
@@ -11,8 +12,11 @@ from typing import Dict, Any, Optional
 import requests
 import PyPDF2
 from flask import Flask, request, jsonify
+
 from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+from flask_limiter.util import (
+    get_remote_address,
+)
 from fpdf import FPDF
 import email_validator
 from flask_cors import CORS
@@ -234,36 +238,28 @@ class PaystubProcessor:
 
         return results
 
-    def perform_compliance_checks(self, data: Dict[str, Any]) -> Dict[str, bool]:
-        """Perform compliance checks on paystub data."""
-        checks = {
-            'minimum_wage': False,
-            'overtime_compliant': False,
-            'total_compensation_valid': False
-        }
+    def perform_compliance_checks(self, data: Dict[str, Any], user_input: Dict[str, Any]) -> Dict[str, bool]:
+    checks = {
+        'minimum_wage': False,
+        'overtime_compliant': False,
+        'total_compensation_valid': False,
+        'long_shift_additional_pay_violation': False
+    }
 
-        # Safely extract values with defaults
-        net_pay = float(data.get('net_pay', 0) or 0)
-        total_hours = float(data.get('total_hours', 0) or 0)
-        gross_pay = float(data.get('gross_pay', 0) or 0)
+    # Extract user input about shifts
+    shifts_exceeded_10_hours = user_input.get('shifts_exceeded_10_hours', False)
+    exceeded_shifts_count = user_input.get('exceeded_hours_count', 0)
 
-        # Check total compensation validity
-        checks['total_compensation_valid'] = net_pay > 0 and gross_pay > 0
+    # If user confirms shifts over 10 hours
+    if shifts_exceeded_10_hours and exceeded_shifts_count > 0:
+        # Calculate additional pay owed
+        additional_pay_owed = exceeded_shifts_count * MINIMUM_WAGE  # $16.50 per excessive shift
 
-        # Only perform calculations if we have valid values
-        if net_pay > 0 and total_hours > 0:
-            # Calculate the regular hourly rate
-            regular_hourly_rate = net_pay / total_hours if total_hours <= 40 else gross_pay / total_hours
+        # Add this calculation to the compliance check
+        checks['long_shift_additional_pay_violation'] = True
+        checks['additional_pay_owed'] = additional_pay_owed
 
-            # Check minimum wage compliance
-            checks['minimum_wage'] = regular_hourly_rate >= MINIMUM_WAGE
-
-            # Check overtime compliance (if applicable)
-            checks['overtime_compliant'] = self._check_overtime_compliance(
-                total_hours, regular_hourly_rate, gross_pay
-            )
-
-        return checks
+    return checks
 
     def _check_overtime_compliance(self, hours: float, hourly_rate: float, gross_pay: float) -> bool:
         """Check if overtime pay complies with regulations"""
@@ -274,92 +270,30 @@ class PaystubProcessor:
         overtime_pay = gross_pay - (40 * hourly_rate)
         return overtime_pay >= (overtime_hours * hourly_rate * 1.5)
 
-    def generate_compliance_report(
-        self, 
-        employee_data: Dict[str, Any], 
-        compliance_results: Dict[str, bool]
-    ) -> str:
-        """Generate PDF compliance report with color-coded status"""
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
+    def generate_compliance_report(self, employee_data, compliance_results, user_input):
+    # Existing report generation...
 
-        # Report Title
-        pdf.set_text_color(0, 0, 0)  # Black
-        pdf.set_font("Arial", 'B', 14)  # Larger, bold font for title
-        pdf.cell(0, 10, "Pay Stub Compliance Report", ln=True, align='C')
-        pdf.ln(10)
-
-        # Employee Information
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, f"Employee: {employee_data.get('employee_name', 'Unknown')}", ln=True)
-        pdf.ln(5)
-
-        # Paystub Details
-        pdf.set_font("Arial", 'B', 12)  # Bold for section title
-        pdf.cell(0, 10, "Paystub Details:", ln=True)
-        pdf.set_font("Arial", '', 12)  # Back to normal
+    if compliance_results.get('long_shift_additional_pay_violation'):
+        additional_pay = compliance_results.get('additional_pay_owed', 0)
         
-        pdf.cell(0, 10, f"Total Hours: {employee_data.get('total_hours', 'N/A')}", ln=True)
-        
-        # Format currency with two decimal places
-        gross_pay = employee_data.get('gross_pay', 'N/A')
-        if isinstance(gross_pay, (int, float)):
-            gross_pay = f"${gross_pay:.2f}"
-        elif gross_pay != 'N/A':
-            gross_pay = f"${gross_pay}"
-            
-        net_pay = employee_data.get('net_pay', 'N/A')
-        if isinstance(net_pay, (int, float)):
-            net_pay = f"${net_pay:.2f}"
-        elif net_pay != 'N/A':
-            net_pay = f"${net_pay}"
-        
-        pdf.cell(0, 10, f"Gross Pay: {gross_pay}", ln=True)
-        pdf.cell(0, 10, f"Net Pay: {net_pay}", ln=True)
-        pdf.ln(5)
-
-        # Compliance Checks
-        pdf.set_font("Arial", 'B', 12)  # Bold for section title
-        pdf.cell(0, 10, "Compliance Check Results:", ln=True)
-        pdf.set_font("Arial", '', 12)  # Back to normal
-        
-        for check, result in compliance_results.items():
-            check_name = check.replace('_', ' ').title()
-            
-            # First part of text - always black
-            pdf.set_text_color(0, 0, 0)  # Black
-            pdf.cell(pdf.get_string_width(f"{check_name}: "), 10, f"{check_name}: ")
-            
-            # Status text with color
-            if result:
-                pdf.set_text_color(0, 128, 0)  # Green for PASSED
-                status = "PASSED"
-            else:
-                pdf.set_text_color(220, 0, 0)  # Red for FAILED
-                status = "FAILED"
-                
-            pdf.cell(0, 10, status, ln=True)
-        
-        # Reset text color to black for any following content
+        pdf.set_text_color(255, 128, 0)  # Orange for Pro Tip
+        pdf.cell(0, 10, "IMPORTANT: Long Shift Compensation Alert!", ln=True)
         pdf.set_text_color(0, 0, 0)
-        
-        # Add timestamp at the bottom
-        pdf.ln(10)
-        pdf.set_font("Arial", '', 10)
-        pdf.set_text_color(128, 128, 128)  # Gray
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        pdf.cell(0, 10, f"Report generated: {timestamp}", ln=True, align='C')
-
-        # Output the PDF
-        request_id = uuid.uuid4().hex[:8]
-        report_path = os.path.join(
-            self.temp_dir, 
-            f"compliance_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{request_id}.pdf"
+        pdf.multi_cell(0, 10, 
+            f"Under NY State Labor Law, for each shift exceeding 10 hours, "
+            f"you are owed an additional {additional_pay_owed} hours at minimum wage (${MINIMUM_WAGE}/hour). "
+            f"Total additional compensation: ${additional_pay:.2f}"
         )
-        pdf.output(report_path)
-        logger.info(f"Compliance report generated: {report_path}")
-        return report_path
+
+        pdf.set_text_color(255, 128, 0)  # Orange for Pro Tip
+        pdf.cell(0, 10, "PRO TIP: Automate Your Wage Tracking!", ln=True)
+        pdf.set_text_color(0, 0, 0)
+        pdf.multi_cell(0, 10, 
+            "Pro Tip automatically tracks and calculates these "
+            "complex wage requirements, ensuring you never miss out on "
+            "your rightful compensation. Upgrade to simplify your "
+            "wage compliance monitoring!"
+        )
 
     def send_email_report(self, email: str, report_path: str) -> bool:
         """Send email with compliance report"""
