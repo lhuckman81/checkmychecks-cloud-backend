@@ -24,8 +24,11 @@ from google.cloud import firestore
 from flask_mail import Mail, Message
 
 # Constants
-MINIMUM_WAGE = float(os.getenv('MINIMUM_WAGE', '15.0'))
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB max file size
+MINIMUM_WAGE = float(os.getenv('MINIMUM_WAGE', '16.5'))  # Updated to match environment file
+OVERTIME_RATE = float(os.getenv('OVERTIME_RATE', '1.5'))  # Overtime multiplier (1.5x)
+LONG_SHIFT_THRESHOLD = float(os.getenv('LONG_SHIFT_THRESHOLD', '10.0'))  # Hours threshold for long shift (10 hours)
+LONG_SHIFT_BONUS = float(os.getenv('LONG_SHIFT_BONUS', '1.0'))  # Additional hours paid for long shifts
+MAX_FILE_SIZE = int(os.getenv('MAX_FILE_SIZE', str(10 * 1024 * 1024)))  # 10MB max file size
 ALLOWED_EXTENSIONS = {'pdf'}
 BUCKET_ID = os.getenv('BUCKET_ID', "cs-poc-zgdkpqzt6vx3fwnl4kk8dky_cloudbuild")
 
@@ -98,6 +101,37 @@ class StorageService:
             logger.error(f"File download failed: {e}")
             raise
 
+    def upload_file(self, file, content_type=None):
+        """
+        Upload a file to Google Cloud Storage with optional content type.
+        
+        :param file: File object to upload
+        :param content_type: Optional MIME type of the file
+        :return: Public URL of the uploaded file
+        """
+        try:
+            # Generate a secure unique filename
+            import uuid
+            from werkzeug.utils import secure_filename
+            
+            filename = f"{uuid.uuid4()}_{secure_filename(file.filename)}"
+            blob = self.bucket.blob(filename)
+            
+            # Set content type if provided
+            if content_type:
+                blob.content_type = content_type
+            
+            # Upload the file
+            blob.upload_from_file(file)
+            
+            # Make the blob publicly accessible
+            blob.make_public()
+            
+            return blob.public_url
+        except Exception as e:
+            logger.error(f"File upload to GCS failed: {e}")
+            raise
+
 
 class PaystubProcessor:
     """Process paystubs for compliance checking"""
@@ -147,7 +181,7 @@ class PaystubProcessor:
         except Exception as e:
             logger.error(f"PDF download from GCS failed: {e}")
             return None
-
+    
     def extract_pdf_text(self, pdf_path: str) -> str:
         """Extract text from PDF with robust error handling"""
         try:
@@ -271,10 +305,10 @@ class PaystubProcessor:
         shifts_exceeded_10_hours = user_input.get('shifts_exceeded_10_hours', False)
         exceeded_shifts_count = user_input.get('exceeded_hours_count', 0)
 
-        # If user confirms shifts over 10 hours
+        # If user confirms shifts over LONG_SHIFT_THRESHOLD hours
         if shifts_exceeded_10_hours and exceeded_shifts_count > 0:
-            # Calculate additional pay owed
-            additional_pay_owed = exceeded_shifts_count * MINIMUM_WAGE  # Additional pay per excessive shift
+            # Calculate additional pay owed (LONG_SHIFT_BONUS hours at minimum wage per qualifying shift)
+            additional_pay_owed = exceeded_shifts_count * MINIMUM_WAGE * LONG_SHIFT_BONUS
 
             # Add this calculation to the compliance check
             checks['long_shift_additional_pay_violation'] = True
@@ -289,7 +323,7 @@ class PaystubProcessor:
 
         overtime_hours = hours - 40
         overtime_pay = gross_pay - (40 * hourly_rate)
-        return overtime_pay >= (overtime_hours * hourly_rate * 1.5)
+        return overtime_pay >= (overtime_hours * hourly_rate * OVERTIME_RATE)
 
     def generate_compliance_report(
         self, 
@@ -385,9 +419,9 @@ class PaystubProcessor:
             pdf.set_text_color(0, 0, 0)
             pdf.set_font("Arial", '', 12)
             pdf.multi_cell(0, 10, 
-                f"Under NY State Labor Law, for each shift exceeding 10 hours, "
-                f"you are owed an additional 1 hour at minimum wage (${MINIMUM_WAGE}/hour). "
-                f"With {exceeded_shifts_count} shifts exceeding 10 hours, "
+                f"Under NY State Labor Law, for each shift exceeding {LONG_SHIFT_THRESHOLD} hours, "
+                f"you are owed an additional {LONG_SHIFT_BONUS} hour at minimum wage (${MINIMUM_WAGE}/hour). "
+                f"With {exceeded_shifts_count} shifts exceeding {LONG_SHIFT_THRESHOLD} hours, "
                 f"total additional compensation: ${additional_pay:.2f}"
             )
 
