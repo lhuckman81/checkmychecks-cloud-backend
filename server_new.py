@@ -147,7 +147,38 @@ class PaystubProcessor:
         except Exception as e:
             logger.error(f"PDF download from GCS failed: {e}")
             return None
-
+    
+    def upload_file(self, file, content_type=None):
+    """
+    Upload a file to Google Cloud Storage with optional content type.
+    
+    :param file: File object to upload
+    :param content_type: Optional MIME type of the file
+    :return: Public URL of the uploaded file
+    """
+    try:
+        # Generate a secure unique filename
+        import uuid
+        from werkzeug.utils import secure_filename
+        
+        filename = f"{uuid.uuid4()}_{secure_filename(file.filename)}"
+        blob = self.bucket.blob(filename)
+        
+        # Set content type if provided
+        if content_type:
+            blob.content_type = content_type
+        
+        # Upload the file
+        blob.upload_from_file(file)
+        
+        # Make the blob publicly accessible
+        blob.make_public()
+        
+        return blob.public_url
+    except Exception as e:
+        logger.error(f"File upload to GCS failed: {e}")
+        raise
+    
     def extract_pdf_text(self, pdf_path: str) -> str:
         """Extract text from PDF with robust error handling"""
         try:
