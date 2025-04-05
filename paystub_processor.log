@@ -1,0 +1,50 @@
+2025-03-26 19:48:22,337 - google.auth.compute_engine._metadata - WARNING - Compute Engine Metadata server unavailable on attempt 1 of 3. Reason: [Errno 65] No route to host
+2025-03-26 19:48:23,388 - google.auth.compute_engine._metadata - WARNING - Compute Engine Metadata server unavailable on attempt 2 of 3. Reason: [Errno 64] Host is down
+2025-03-26 19:48:25,441 - google.auth.compute_engine._metadata - WARNING - Compute Engine Metadata server unavailable on attempt 3 of 3. Reason: [Errno 64] Host is down
+2025-03-26 19:48:25,442 - google.auth._default - WARNING - Authentication failed using Compute Engine authentication due to unavailable metadata server.
+2025-03-26 19:52:03,217 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://10.101.7.131:8080
+2025-03-26 19:52:03,220 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-03-26 22:43:45,902 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://192.168.86.22:8080
+2025-03-26 22:43:45,903 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-03-26 22:46:16,334 - werkzeug - INFO - 127.0.0.1 - - [26/Mar/2025 22:46:16] "GET / HTTP/1.1" 200 -
+2025-03-26 22:49:42,910 - __main__ - INFO - Request e6ef87e1ccdc457d82d3aee058dc82b3: Starting file upload
+2025-03-26 22:49:42,913 - __main__ - INFO - Request e6ef87e1ccdc457d82d3aee058dc82b3: Processing upload for email: lhuckman@gmail.com, filename: 06e21602-3447-4e0f-a98d-5fdef170117b - Leif Huckman.pdf
+2025-03-26 22:49:44,119 - __main__ - INFO - Request e6ef87e1ccdc457d82d3aee058dc82b3: Uploading file: 06e21602-3447-4e0f-a98d-5fdef170117b - Leif Huckman.pdf
+2025-03-26 22:49:45,661 - __main__ - INFO - File uploaded to GCS: paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf
+2025-03-26 22:49:45,662 - __main__ - INFO - Request e6ef87e1ccdc457d82d3aee058dc82b3: File uploaded successfully with path: paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf
+2025-03-26 22:49:45,662 - __main__ - INFO - Generating document ID for file_url: paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf
+2025-03-26 22:49:45,662 - __main__ - INFO - Normalized URL for ID generation: paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf
+2025-03-26 22:49:45,662 - __main__ - INFO - Generated document ID: 3109ab9ae864a5f56e1cfd898ade4661
+2025-03-26 22:49:46,204 - __main__ - INFO - Updated status for paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf to uploaded
+2025-03-26 22:49:46,205 - werkzeug - INFO - 127.0.0.1 - - [26/Mar/2025 22:49:46] "POST /upload-paystub HTTP/1.1" 200 -
+2025-03-26 22:50:20,586 - __main__ - INFO - Generating document ID for file_url: paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf
+2025-03-26 22:50:20,587 - __main__ - INFO - Normalized URL for ID generation: paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf
+2025-03-26 22:50:20,587 - __main__ - INFO - Generated document ID: 3109ab9ae864a5f56e1cfd898ade4661
+2025-03-26 22:50:20,688 - __main__ - INFO - Updated status for paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf to processing
+2025-03-26 22:50:20,688 - __main__ - INFO - Request b8ae79c5f88a4f1b80c118d637fadc24: Processing paystub for lhuckman@gmail.com, file: paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf
+2025-03-26 22:50:20,718 - __main__ - INFO - Request b8ae79c5f88a4f1b80c118d637fadc24: Downloading PDF from GCS
+2025-03-26 22:50:21,141 - __main__ - INFO - Downloaded file from GCS: /tmp/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf
+2025-03-26 22:50:21,141 - __main__ - INFO - Request b8ae79c5f88a4f1b80c118d637fadc24: Extracting text from PDF
+2025-03-26 22:50:21,188 - __main__ - INFO - Request b8ae79c5f88a4f1b80c118d637fadc24: Parsing paystub data
+2025-03-26 22:50:21,188 - __main__ - WARNING - Could not extract employee_name
+2025-03-26 22:50:21,189 - __main__ - WARNING - Could not extract gross_pay
+2025-03-26 22:50:21,189 - __main__ - INFO - Request b8ae79c5f88a4f1b80c118d637fadc24: Performing compliance checks
+2025-03-26 22:50:21,189 - __main__ - ERROR - Request b8ae79c5f88a4f1b80c118d637fadc24: Processing failed - '>' not supported between instances of 'NoneType' and 'int'
+2025-03-26 22:50:21,191 - __main__ - ERROR - Traceback (most recent call last):
+  File "/Users/leifhuckman/checkmychecks-cloud-backend/server.py", line 697, in process_paystub
+    compliance_results = processor.perform_compliance_checks(paystub_data)
+  File "/Users/leifhuckman/checkmychecks-cloud-backend/server.py", line 362, in perform_compliance_checks
+    checks['total_compensation_valid'] = net_pay > 0 and gross_pay > 0
+TypeError: '>' not supported between instances of 'NoneType' and 'int'
+
+2025-03-26 22:50:21,191 - __main__ - INFO - Generating document ID for file_url: paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf
+2025-03-26 22:50:21,191 - __main__ - INFO - Normalized URL for ID generation: paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf
+2025-03-26 22:50:21,191 - __main__ - INFO - Generated document ID: 3109ab9ae864a5f56e1cfd898ade4661
+2025-03-26 22:50:21,256 - __main__ - INFO - Updated status for paystub_uploads/20250326_224944_06e21602-3447-4e0f-a98d-5fdef170117b_-_Leif_Huckman.pdf to failed
+2025-03-26 22:50:21,256 - werkzeug - INFO - 127.0.0.1 - - [26/Mar/2025 22:50:21] "[35m[1mPOST /process-paystub HTTP/1.1[0m" 500 -
