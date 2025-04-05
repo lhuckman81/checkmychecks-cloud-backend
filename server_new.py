@@ -75,64 +75,90 @@ mail = Mail(app)
 # Initialize Firestore client
 db = firestore.Client()
 
-
 class StorageService:
-    """Service for handling Google Cloud Storage operations"""
+    """Service for handling Google Cloud Storage operations with uniform bucket access"""
 
     def __init__(self, bucket_id: str):
         """Initialize the storage service"""
-        self.bucket_id = bucket_id
-        self.client = storage.Client()
-        self.bucket = self.client.bucket(bucket_id)
-
-    def download_file(self, file_url: str, destination: str) -> str:
-        """Download a file from Google Cloud Storage"""
         try:
-            # Get just the filename part
-            filename = os.path.basename(file_url)
-            local_path = os.path.join(destination, filename)
-
-            # Download the file
-            blob = self.bucket.blob(file_url)
-            blob.download_to_filename(local_path)
-
-            logger.info(f"Downloaded file from GCS: {local_path}")
-            return local_path
+            self.client = storage.Client()
+            self.bucket_id = bucket_id
+            self.bucket = self.client.bucket(bucket_id)
         except Exception as e:
-            logger.error(f"File download failed: {e}")
+            logger.error(f"Storage service initialization failed: {e}")
             raise
 
     def upload_file(self, file, content_type=None):
         """
-        Upload a file to Google Cloud Storage with optional content type.
+        Upload a file to Google Cloud Storage with uniform bucket access.
         
         :param file: File object to upload
         :param content_type: Optional MIME type of the file
-        :return: Public URL of the uploaded file
+        :return: Tuple of (blob name, signed URL)
         """
         try:
             # Generate a secure unique filename
-            import uuid
-            from werkzeug.utils import secure_filename
+            filename = f"paystub_uploads/{uuid.uuid4()}_{secure_filename(file.filename)}"
             
-            filename = f"{uuid.uuid4()}_{secure_filename(file.filename)}"
+            # Create blob
             blob = self.bucket.blob(filename)
             
             # Set content type if provided
             if content_type:
-                blob.content_type = content_type
+                blob.content_type = content_type or 'application/octet-stream'
+            
+            # Reset file pointer to beginning
+            file.seek(0)
             
             # Upload the file
             blob.upload_from_file(file)
             
-            # Make the blob publicly accessible
-            blob.make_public()
+            # Generate a signed URL for accessing the file
+            signed_url = blob.generate_signed_url(
+                version='v4',
+                # URL expires in 1 hour
+                expiration=datetime.timedelta(hours=1),
+                # HTTP method
+                method='GET'
+            )
             
-            return blob.public_url
+            logger.info(f"File uploaded successfully: {filename}")
+            return filename, signed_url
+        
         except Exception as e:
             logger.error(f"File upload to GCS failed: {e}")
+            logger.error(traceback.format_exc())
             raise
 
+    def download_file(self, file_url: str, destination: str) -> str:
+        """
+        Download a file from Google Cloud Storage.
+        
+        :param file_url: Path of the file in the bucket
+        :param destination: Local directory to save the file
+        :return: Local path of the downloaded file
+        """
+        try:
+            # Ensure the full blob path is used
+            blob = self.bucket.blob(file_url)
+            
+            # Get just the filename part
+            filename = os.path.basename(file_url)
+            local_path = os.path.join(destination, filename)
+
+            # Ensure destination directory exists
+            os.makedirs(destination, exist_ok=True)
+
+            # Download the file
+            blob.download_to_filename(local_path)
+
+            logger.info(f"Downloaded file from GCS: {local_path}")
+            return local_path
+        
+        except Exception as e:
+            logger.error(f"File download failed: {e}")
+            logger.error(traceback.format_exc())
+            raise
 
 class PaystubProcessor:
     """Process paystubs for compliance checking"""
@@ -572,14 +598,7 @@ def upload_paystub():
         try:
             # Upload to Google Cloud Storage
             storage_service = StorageService(BUCKET_ID)
-            public_url = storage_service.upload_file(file)
-            
-            if not public_url:
-                logger.error("File upload to GCS failed")
-                return jsonify({"error": "File upload failed"}), 500
-            
-            # Extract filename for tracking
-            filename = os.path.basename(public_url)
+            filename, signed_url = storage_service.upload_file(file)
             
             # Store this file URL in Firestore with initial status
             processor.update_processing_status(
@@ -591,6 +610,7 @@ def upload_paystub():
             
             return jsonify({
                 "file_url": filename,
+                "signed_url": signed_url,
                 "status": "uploaded",
                 "message": "File uploaded successfully"
             })
