@@ -16,5 +16,7 @@ COPY . .
 # Cloud Run automatically assigns a PORT environment variable
 # No need for EXPOSE as Cloud Run handles this
 
+RUN echo "Contents of /app:" && ls -la /app
+
 # Change this line
 CMD ["gunicorn", "--bind", ":8080", "--workers", "1", "--threads", "8", "--timeout", "0", "server_new:app"]
