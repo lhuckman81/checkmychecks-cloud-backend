@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional
 
 import requests
 import PyPDF2
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from fpdf import FPDF
@@ -24,13 +24,14 @@ from google.cloud import firestore
 from flask_mail import Mail, Message
 
 # Constants
-MINIMUM_WAGE = float(os.getenv('MINIMUM_WAGE', '16.5'))  # Updated to match environment file
-OVERTIME_RATE = float(os.getenv('OVERTIME_RATE', '1.5'))  # Overtime multiplier (1.5x)
-LONG_SHIFT_THRESHOLD = float(os.getenv('LONG_SHIFT_THRESHOLD', '10.0'))  # Hours threshold for long shift (10 hours)
-LONG_SHIFT_BONUS = float(os.getenv('LONG_SHIFT_BONUS', '1.0'))  # Additional hours paid for long shifts
-MAX_FILE_SIZE = int(os.getenv('MAX_FILE_SIZE', str(10 * 1024 * 1024)))  # 10MB max file size
+MINIMUM_WAGE = float(os.getenv('MINIMUM_WAGE', '16.5'))
+OVERTIME_RATE = float(os.getenv('OVERTIME_RATE', '1.5'))
+LONG_SHIFT_THRESHOLD = float(os.getenv('LONG_SHIFT_THRESHOLD', '10.0'))
+LONG_SHIFT_BONUS = float(os.getenv('LONG_SHIFT_BONUS', '1.0'))
+MAX_FILE_SIZE = int(os.getenv('MAX_FILE_SIZE', str(10 * 1024 * 1024)))
 ALLOWED_EXTENSIONS = {'pdf'}
 BUCKET_ID = os.getenv('BUCKET_ID', "cs-poc-zgdkpqzt6vx3fwnl4kk8dky_cloudbuild")
+CLOUD_BACKEND_URL = os.getenv('CLOUD_BACKEND_URL', '')
 
 # Configure logging
 logging.basicConfig(
@@ -42,8 +43,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Flask app initialization
-app = Flask(__name__)
+# Flask app initialization with static file serving capability
+app = Flask(__name__, static_folder='build', static_url_path='')
 
 # Enhanced CORS configuration
 CORS(app, resources={r"/*": {
@@ -303,7 +304,7 @@ class PaystubProcessor:
 
         # Check for long shift violations
         shifts_exceeded_10_hours = user_input.get('shifts_exceeded_10_hours', False)
-        exceeded_shifts_count = user_input.get('exceeded_hours_count', 0)
+        exceeded_shifts_count = int(user_input.get('exceeded_shifts_count', 0))
 
         # If user confirms shifts over LONG_SHIFT_THRESHOLD hours
         if shifts_exceeded_10_hours and exceeded_shifts_count > 0:
@@ -410,7 +411,7 @@ class PaystubProcessor:
         # Add Long Shift alert if applicable
         if compliance_results.get('long_shift_additional_pay_violation'):
             additional_pay = compliance_results.get('additional_pay_owed', 0)
-            exceeded_shifts_count = user_input.get('exceeded_hours_count', 0)
+            exceeded_shifts_count = user_input.get('exceeded_shifts_count', 0)
             
             pdf.ln(10)
             pdf.set_text_color(255, 128, 0)  # Orange for Pro Tip
@@ -523,15 +524,81 @@ class PaystubProcessor:
 # Create a global instance of the processor
 processor = PaystubProcessor()
 
-# Define all routes before the main block
+# Define routes
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    """Serve the static React app files"""
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
     return jsonify({'status': 'healthy'})
 
-@app.route('/', methods=['GET'])
-def root():
-    return jsonify({'message': 'Flask backend is running'})
+@app.route('/api', methods=['GET'])
+def api_info():
+    return jsonify({
+        'message': 'API is running',
+        'version': '1.0.0'
+    })
+
+@app.route('/upload-paystub', methods=['POST'])
+def upload_paystub():
+    """Handle paystub file upload.
+    Uploads the file to Google Cloud Storage and forwards the URL to the backend.
+    """
+    # Log all incoming request details for debugging
+    logger.info(f"Request headers: {request.headers}")
+    logger.info(f"Request content type: {request.content_type}")
+
+    if 'file' not in request.files:
+        logger.error("No file part in the request")
+        return jsonify({"error": "No file part"}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        logger.error("No selected file")
+        return jsonify({"error": "No selected file"}), 400
+    
+    if file:
+        # Log file details
+        logger.info(f"Received file: {file.filename}")
+
+        try:
+            # Upload to Google Cloud Storage
+            storage_service = StorageService(BUCKET_ID)
+            public_url = storage_service.upload_file(file)
+            
+            if not public_url:
+                logger.error("File upload to GCS failed")
+                return jsonify({"error": "File upload failed"}), 500
+            
+            # Extract filename for tracking
+            filename = os.path.basename(public_url)
+            
+            # Store this file URL in Firestore with initial status
+            processor.update_processing_status(
+                file_url=filename,
+                email=request.form.get('email', ''),
+                status='uploaded',
+                message='File uploaded, pending processing'
+            )
+            
+            return jsonify({
+                "file_url": filename,
+                "status": "uploaded",
+                "message": "File uploaded successfully"
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in upload: {e}")
+            logger.error(traceback.format_exc())
+            return jsonify({"error": str(e)}), 500
 
 @app.route('/process-paystub', methods=['POST'])
 def process_paystub():
@@ -547,7 +614,7 @@ def process_paystub():
     # Get shift information if available
     user_input = {
         'shifts_exceeded_10_hours': data.get('shifts_exceeded_10_hours', False),
-        'exceeded_hours_count': data.get('exceeded_hours_count', 0)
+        'exceeded_shifts_count': int(data.get('exceeded_shifts_count', 0))
     }
     
     if not file_url:
@@ -691,7 +758,6 @@ def process_paystub_async(file_url: str, email: str, user_input: Dict[str, Any] 
             message=f'Error processing paystub: {str(e)}'
         )
 
-
 @app.route('/check-status', methods=['GET'])
 def check_status():
     """Check the status of a paystub processing job."""
@@ -731,7 +797,6 @@ def check_status():
             'error': 'Failed to check processing status',
             'details': str(e)
         }), 500
-
 
 @app.route('/test-download', methods=['GET'])
 def test_download():
@@ -773,6 +838,13 @@ def test_download():
             'traceback': traceback.format_exc()
         }), 500
 
-
+# Main entry point
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+    # Make sure the static folder exists
+    os.makedirs(app.static_folder, exist_ok=True)
+    
+    # Get the port from environment variable or use default
+    port = int(os.environ.get('PORT', 8080))
+    
+    # Start the Flask app
+    app.run(debug=False, host='0.0.0.0', port=port)
