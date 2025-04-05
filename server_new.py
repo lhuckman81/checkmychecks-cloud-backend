@@ -48,7 +48,10 @@ app = Flask(__name__, static_folder='build', static_url_path='')
 
 # Enhanced CORS configuration
 CORS(app, resources={r"/*": {
-    "origins": "*",
+    "origins": [
+        "https://checkmychecks-upload-new-996177726899.us-central1.run.app",
+        "http://localhost:3000"  # for local development
+    ],
     "methods": ["GET", "POST", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization"]
 }})
