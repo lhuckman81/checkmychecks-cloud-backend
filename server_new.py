@@ -88,47 +88,49 @@ class StorageService:
             logger.error(f"Storage service initialization failed: {e}")
             raise
 
-    def upload_file(self, file, content_type=None):
-        """
-        Upload a file to Google Cloud Storage with uniform bucket access.
+ from datetime import datetime, timedelta
+
+def upload_file(self, file, content_type=None):
+    """
+    Upload a file to Google Cloud Storage with uniform bucket access.
+    
+    :param file: File object to upload
+    :param content_type: Optional MIME type of the file
+    :return: Tuple of (blob name, signed URL)
+    """
+    try:
+        # Generate a secure unique filename
+        filename = f"paystub_uploads/{uuid.uuid4()}_{secure_filename(file.filename)}"
         
-        :param file: File object to upload
-        :param content_type: Optional MIME type of the file
-        :return: Tuple of (blob name, signed URL)
-        """
-        try:
-            # Generate a secure unique filename
-            filename = f"paystub_uploads/{uuid.uuid4()}_{secure_filename(file.filename)}"
-            
-            # Create blob
-            blob = self.bucket.blob(filename)
-            
-            # Set content type if provided
-            if content_type:
-                blob.content_type = content_type or 'application/octet-stream'
-            
-            # Reset file pointer to beginning
-            file.seek(0)
-            
-            # Upload the file
-            blob.upload_from_file(file)
-            
-            # Generate a signed URL for accessing the file
-            signed_url = blob.generate_signed_url(
-                version='v4',
-                # URL expires in 1 hour
-                expiration=datetime.timedelta(hours=1),
-                # HTTP method
-                method='GET'
-            )
-            
-            logger.info(f"File uploaded successfully: {filename}")
-            return filename, signed_url
+        # Create blob
+        blob = self.bucket.blob(filename)
         
-        except Exception as e:
-            logger.error(f"File upload to GCS failed: {e}")
-            logger.error(traceback.format_exc())
-            raise
+        # Set content type if provided
+        if content_type:
+            blob.content_type = content_type or 'application/octet-stream'
+        
+        # Reset file pointer to beginning
+        file.seek(0)
+        
+        # Upload the file
+        blob.upload_from_file(file)
+        
+        # Generate a signed URL for accessing the file - FIXED DATETIME USAGE
+        signed_url = blob.generate_signed_url(
+            version='v4',
+            # URL expires in 1 hour using timedelta
+            expiration=timedelta(hours=1),  # USE timedelta, NOT datetime.timedelta
+            # HTTP method
+            method='GET'
+        )
+        
+        logger.info(f"File uploaded successfully: {filename}")
+        return filename, signed_url
+    
+    except Exception as e:
+        logger.error(f"File upload to GCS failed: {e}")
+        logger.error(traceback.format_exc())
+        raise
 
     def download_file(self, file_url: str, destination: str) -> str:
         """
